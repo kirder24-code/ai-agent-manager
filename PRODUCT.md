@@ -32,6 +32,13 @@ npm run acceptance
 npm run dashboard
 ```
 
+macOS launchers:
+
+```text
+Open Dashboard.command
+Run Agent.command
+```
+
 Real agent wrapping:
 
 ```bash

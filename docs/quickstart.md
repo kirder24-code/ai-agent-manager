@@ -39,6 +39,14 @@ http://127.0.0.1:8791
 
 The dashboard is local-only. It reads `.aim-control/missions` and `.aim-control/gateway-events.jsonl`.
 
+On macOS, double-click:
+
+```text
+Open Dashboard.command
+```
+
+to start and open the dashboard without typing commands.
+
 ## 4. Try the Mock Gateway
 
 ```bash
@@ -79,3 +87,11 @@ node ./bin/aim.mjs run --label real-claude-test -- claude "Inspect this repo and
 ```
 
 The first real validation target is not perfection. It is whether the report helps you continue when the agent gets stuck.
+
+On macOS, double-click:
+
+```text
+Run Agent.command
+```
+
+and paste the agent command into the dialog.

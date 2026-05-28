@@ -61,6 +61,13 @@ npm run demo
 npm run acceptance
 ```
 
+On macOS, you can also use the double-click launchers:
+
+```text
+Open Dashboard.command
+Run Agent.command
+```
+
 Open the dashboard:
 
 ```bash
@@ -84,6 +91,12 @@ node ./bin/aim.mjs preflight -- codex "Build a full SaaS app with auth, billing,
 node ./bin/aim.mjs run --label codex-small-task -- codex "Fix one small failing check. Run verification. Stop if blocked."
 node ./bin/aim.mjs report
 node ./bin/aim.mjs export
+```
+
+On macOS, double-click `Run Agent.command` and paste a command such as:
+
+```text
+codex "Fix one small issue. Run verification. Stop if blocked."
 ```
 
 The same pattern works for any terminal command:

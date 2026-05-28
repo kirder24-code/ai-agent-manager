@@ -10,6 +10,8 @@ node ./bin/aim.mjs run --label codex-pass -- codex "implement settings screen"
 node ./bin/aim.mjs run --label verify -- npm test
 ```
 
+On macOS, non-terminal users can double-click `Run Agent.command` and paste the same command into the dialog.
+
 The wrapper records:
 
 - terminal output;

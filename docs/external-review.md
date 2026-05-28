@@ -30,6 +30,10 @@ The prototype is local-only:
 - budget guard;
 - fuel calibration.
 
+## Current Dashboard
+
+![AI Agent Manager dashboard rescue notice](assets/dashboard-rescue-notice.png)
+
 ## Demo
 
 ```bash

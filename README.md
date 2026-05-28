@@ -34,6 +34,8 @@ The point is not more dashboards. The point is a clearer answer:
 
 > The agent is stuck here. This is the evidence. This is the smallest next prompt to try.
 
+![AI Agent Manager dashboard rescue notice](docs/assets/dashboard-rescue-notice.png)
+
 ## What Works Today
 
 - `aim preflight` checks whether a prompt is too broad before the agent starts.

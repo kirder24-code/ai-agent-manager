@@ -1,161 +1,175 @@
 # AI Agent Manager
 
-Evidence-based mission control for AI-agent work.
+[![CI](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml)
 
-This is not another token dashboard. The first wedge is **Context-Aware Rescue** for coding agents:
+**AI Agent Manager is evidence-based mission control for AI-agent work.**
 
-1. run an agent or command through `aim`;
-2. capture terminal output;
-3. snapshot git diff before/after;
-4. parse errors such as `Cannot find module` and `TS2307`;
-5. connect errors to the latest diff;
-6. produce a rescue packet with evidence, confidence, and a narrower next prompt.
+It helps answer the question every serious AI-agent user eventually runs into:
 
-## Quick Start
+> Did the agent actually move the task forward, or did it just spend tokens and look busy?
+
+This prototype focuses on coding agents such as Codex, Claude Code, Cursor-style terminal agents, and local automation scripts.
+
+## What Problem It Solves
+
+AI agents can spend minutes, hours, or subscription limits while:
+
+- looping around the same error;
+- rewriting plans instead of fixing the blocker;
+- failing a terminal command without explaining the real cause;
+- changing nothing, but producing a confident summary;
+- consuming API tokens or visible subscription fuel without a finished result.
+
+AI Agent Manager watches the work from outside the agent and produces a simple rescue notice:
+
+```text
+What happened?
+Likely cause?
+What changed?
+Recommended next step?
+Copyable rescue prompt?
+```
+
+The point is not more dashboards. The point is a clearer answer:
+
+> The agent is stuck here. This is the evidence. This is the smallest next prompt to try.
+
+## What Works Today
+
+- `aim preflight` checks whether a prompt is too broad before the agent starts.
+- `aim run -- <command>` wraps an agent or command and records the mission.
+- Terminal output, exit code, git diff, changed files, parsed errors, and stuck signals are captured.
+- `aim report` creates a human-readable rescue report.
+- `aim export` writes an evidence JSON packet.
+- `aim dashboard` opens a local HTML dashboard focused on the problem and next step.
+- `aim gateway` starts an OpenAI-compatible local gateway for API usage tracking.
+- `aim gateway --mock` demonstrates gateway behavior without an API key.
+- `AIM_DAILY_BUDGET_USD` blocks calls after a local budget threshold.
+- `aim fuel` supports manual calibration for subscriptions that only show percentages.
+
+## Five-Minute Demo
+
+No API key is required.
 
 ```bash
-cd agent-manager-lab
-npm run check
+git clone https://github.com/kirder24-code/ai-agent-manager.git
+cd ai-agent-manager
 npm run setup
 npm run doctor
 npm run demo
-npm run report
+npm run acceptance
 ```
 
-The demo runs a deliberately broken TypeScript build in `examples/broken-ts-app`.
-
-## Real Usage
-
-Run any agent or command through the wrapper:
+Open the dashboard:
 
 ```bash
-node ./bin/aim.mjs preflight -- claude "build the full mobile app"
-node ./bin/aim.mjs run --label auth-fix -- claude "fix the auth screen"
-node ./bin/aim.mjs run --label tests -- npm test
+npm run dashboard
+```
+
+Then visit:
+
+```text
+http://127.0.0.1:8791
+```
+
+The included demo intentionally runs a broken TypeScript project so the manager can show a stuck run, the likely cause, and a rescue prompt.
+
+## Real Usage With an Agent
+
+Instead of launching an agent directly, wrap it:
+
+```bash
+node ./bin/aim.mjs preflight -- codex "Build a full SaaS app with auth, billing, dashboard and deployment"
+node ./bin/aim.mjs run --label codex-small-task -- codex "Fix one small failing check. Run verification. Stop if blocked."
 node ./bin/aim.mjs report
 node ./bin/aim.mjs export
-node ./bin/aim.mjs dashboard
-node ./bin/aim.mjs doctor
-node ./bin/aim.mjs templates
 ```
 
-For subscription limits that show percentages instead of dollars:
+The same pattern works for any terminal command:
 
 ```bash
-node ./bin/aim.mjs fuel set 24
-node ./bin/aim.mjs run --label feature --fuel-before 24 -- claude "build settings screen"
-node ./bin/aim.mjs fuel calibrate <mission-id> 19
+node ./bin/aim.mjs run --label tests -- npm test
+node ./bin/aim.mjs run --label build -- npm run build
 ```
 
-The system will then record that the mission consumed `5%` of visible subscription fuel. It does not invent exact token counts when the provider does not expose them.
+## API Cost Gateway
 
-## Product Flow
+Mock mode, no external calls:
 
-1. **Preflight**
-   ```bash
-   node ./bin/aim.mjs preflight -- claude "build a full app"
-   ```
-   Detects broad scope, missing verification scripts, and fuel uncertainty before an expensive run starts.
+```bash
+node ./bin/aim.mjs gateway --mock
+```
 
-2. **Run**
-   ```bash
-   node ./bin/aim.mjs run --label feature -- claude "implement one settings screen"
-   ```
-   Captures terminal logs, git evidence, exit code, parsed errors, and stuck signals.
+Real OpenAI-compatible proxy:
 
-3. **Rescue**
-   ```bash
-   node ./bin/aim.mjs report
-   ```
-   Produces a diagnosis packet with evidence, confidence, and a narrower prompt.
+```bash
+OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
+```
 
-4. **Dashboard**
-   ```bash
-   node ./bin/aim.mjs dashboard
-   ```
-   Opens a local dashboard at `http://127.0.0.1:8791`.
+Point compatible tools to:
 
-5. **Gateway**
-   ```bash
-   OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
-   ```
-   Starts an OpenAI-compatible proxy at `http://127.0.0.1:8792/v1`.
+```text
+OPENAI_BASE_URL=http://127.0.0.1:8792/v1
+OPENAI_API_KEY=local-placeholder
+```
 
-   Point compatible tools at:
+Optional budget guard:
 
-   ```text
-   OPENAI_BASE_URL=http://127.0.0.1:8792/v1
-   OPENAI_API_KEY=local-placeholder
-   ```
+```bash
+AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
+```
 
-   Gateway events are stored in `.aim-control/gateway-events.jsonl`. Costs are labeled honestly:
+## Trust Model
 
-   - provider returned usage: `provider_usage`;
-   - known static prototype price: `calculated_from_static_price_table`;
-   - unknown model price: `unknown_price`;
-   - no provider usage: `unknown`.
+The product is designed not to fake certainty.
 
-   Demo without an external API key:
-
-   ```bash
-   node ./bin/aim.mjs gateway --mock
-   ```
-
-   Budget guard:
-
-   ```bash
-   AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
-   ```
-
-## Product Principle
-
-Every output is labeled by truth source:
+Every important output is labeled by source:
 
 - `observed`: git diff, exit code, file changes, terminal output;
 - `calculated`: parsed errors, diff hashes, stuck score;
-- `manual_calibration`: user-visible before/after subscription fuel;
-- `estimated`: only when exact provider data is unavailable;
-- `unknown`: when the system cannot honestly know.
+- `provider_usage`: token usage returned by an upstream model provider;
+- `manual_calibration`: user-visible subscription percentage before/after a mission;
+- `unknown`: the system cannot honestly know.
 
-## Current Scope
+If it cannot prove something, it should say so.
 
-Implemented:
+## Current Stage
 
-- CLI wrapper: `aim run -- <command...>`;
-- setup/doctor onboarding: `aim setup`, `aim doctor`;
-- preflight scope check: `aim preflight -- <command...>`;
-- mission log in `.aim-control/missions`;
-- terminal capture;
-- git before/after snapshot;
-- TypeScript/module/test error parsing;
-- stuck detection v1;
-- context-aware rescue packet v1;
-- local dashboard: `aim dashboard`;
-- OpenAI-compatible gateway v1: `aim gateway`;
-- mock gateway mode: `aim gateway --mock`;
-- budget guard through `AIM_DAILY_BUDGET_USD`;
-- manual fuel calibration for subscriptions.
+This is a working local prototype, not a polished SaaS product.
 
-Not yet implemented:
+It is ready for:
 
-- verified live model price catalog;
-- semantic model router;
-- AgentSight-style zero-instrumentation monitoring;
-- integrations with Cursor/Claude Code logs beyond CLI wrapping.
+- evaluating the concept;
+- wrapping real Codex / Claude / Cursor sessions;
+- collecting stuck-agent examples;
+- testing whether rescue prompts actually save time.
 
-## Why This Wedge
+It is not yet:
 
-Coding agents are the best first domain because progress can be checked with objective proof:
+- a hosted cloud platform;
+- a verified live model price catalog;
+- a universal agent observability standard;
+- a replacement for Langfuse, LiteLLM, AgentOps, or other infrastructure tools.
 
-- git diff;
-- build/test/lint output;
-- changed files;
-- repeated errors;
-- artifact creation.
+## Why This Exists
 
-The goal is to avoid fake confidence. If the system cannot prove something, it says so.
+Most AI-agent tooling answers:
 
-## More Docs
+```text
+What happened?
+```
+
+AI Agent Manager is trying to answer:
+
+```text
+Why is the task not finished, and what is the smallest next step to rescue it?
+```
+
+The thesis:
+
+> AI agents need managers.
+
+## Documentation
 
 - [Product status](PRODUCT.md)
 - [Quickstart](docs/quickstart.md)

@@ -1,7 +1,6 @@
 {
   "name": "ai-agent-manager",
   "version": "0.1.0",
-  "private": true,
   "description": "Evidence-based mission control for AI-agent work: preflight, stuck detection, rescue reports, local dashboard and cost gateway.",
   "license": "MIT",
   "type": "module",

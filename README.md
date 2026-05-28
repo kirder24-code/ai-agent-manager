@@ -40,6 +40,7 @@ The point is not more dashboards. The point is a clearer answer:
 - `aim run -- <command>` wraps an agent or command and records the mission.
 - Terminal output, exit code, git diff, changed files, parsed errors, and stuck signals are captured.
 - `aim report` creates a human-readable rescue report.
+- Every mission also writes a standalone `report.html` that can be opened in a browser.
 - `aim export` writes an evidence JSON packet.
 - `aim dashboard` opens a local HTML dashboard focused on the problem and next step.
 - `aim gateway` starts an OpenAI-compatible local gateway for API usage tracking.

@@ -15,6 +15,7 @@ It can:
 - record terminal output, exit code, git diff, changed files and parsed errors;
 - detect stuck or at-risk missions;
 - produce context-aware rescue prompts;
+- write standalone HTML mission reports;
 - calibrate visible subscription fuel percentages;
 - proxy OpenAI-compatible API traffic through a local gateway;
 - record gateway token usage and estimated cost;

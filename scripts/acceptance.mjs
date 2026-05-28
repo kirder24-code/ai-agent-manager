@@ -24,6 +24,16 @@ if (exportJson.mission.status !== "stuck") fail("export status", JSON.stringify(
 if (!exportJson.mission.rescue.recommendations?.[0]?.prompt) fail("export rescue prompt", JSON.stringify(exportJson, null, 2));
 checks.push(["export content", true]);
 
+const htmlReport = await readFile(path.join(root, ".aim-control", "missions", missionId, "report.html"), "utf8");
+if (!htmlReport.includes("Recommended next step")) fail("html report recommendation", htmlReport);
+if (!htmlReport.includes("Technical evidence")) fail("html report evidence", htmlReport);
+checks.push(["html report", true]);
+
+const missingAgent = await run(["node", "./bin/aim.mjs", "run", "--label", "acceptance-missing-agent", "--", "definitely-not-installed-agent-xyz", "do", "work"]);
+if (!missingAgent.includes("Install or expose the missing agent command")) fail("missing agent rescue", missingAgent);
+if (!missingAgent.includes("Status: stuck")) fail("missing agent stuck", missingAgent);
+checks.push(["missing agent rescue", true]);
+
 console.log("\nAcceptance passed:");
 for (const [name] of checks) console.log(`OK ${name}`);
 

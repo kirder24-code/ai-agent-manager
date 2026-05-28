@@ -37,6 +37,16 @@ const ERROR_PATTERNS = [
     kind: "test_failure",
     confidence: "medium",
     regexes: [/(FAIL|failed|AssertionError|Expected .* Received .*)/gi]
+  },
+  {
+    kind: "command_not_found",
+    confidence: "high",
+    regexes: [
+      /Error: spawn ([^\s]+) ENOENT/g,
+      /spawn ([^\s]+) ENOENT/g,
+      /command not found: ([^\s]+)/gi,
+      /([^:\s]+): command not found/gi
+    ]
   }
 ];
 
@@ -89,6 +99,7 @@ export async function runMission({ command, label, fuelBefore }) {
   await writeFile(path.join(missionDir, "stderr.log"), output.stderr);
   await writeFile(path.join(missionDir, "mission.json"), JSON.stringify(mission, null, 2));
   await writeFile(path.join(missionDir, "report.md"), formatReport(mission));
+  await writeFile(path.join(missionDir, "report.html"), formatHtmlReport(mission));
   await writeFile(path.join(STORE_DIR, "latest"), id);
 
   return {
@@ -456,6 +467,7 @@ export async function calibrateFuel(id, afterPercent) {
   const missionDir = path.join(MISSIONS_DIR, mission.id);
   await writeFile(path.join(missionDir, "mission.json"), JSON.stringify(mission, null, 2));
   await writeFile(path.join(missionDir, "report.md"), formatReport(mission));
+  await writeFile(path.join(missionDir, "report.html"), formatHtmlReport(mission));
 
   const fuel = await readFuel();
   fuel.currentPercent = after;
@@ -652,6 +664,9 @@ function detectStuck({ output, errors, diffEvidence, preflight }) {
   const signals = [];
   if (output.exitCode !== 0) signals.push({ signal: "command_failed", weight: 2, evidence: `exit code ${output.exitCode}` });
   if (errors.length > 0) signals.push({ signal: "terminal_errors", weight: 2, evidence: `${errors.length} parsed error(s)` });
+  if (errors.some((error) => error.kind === "command_not_found")) {
+    signals.push({ signal: "missing_cli", weight: 2, evidence: "the requested command could not be found on PATH" });
+  }
   if (diffEvidence.changedFiles.length === 0 && output.durationMs > 3000) {
     signals.push({ signal: "no_artifact", weight: 2, evidence: "no git diff changed during mission" });
   }
@@ -674,6 +689,22 @@ function buildRescuePacket({ command, output, errors, diffEvidence, preflight, s
   const recommendations = [];
   const moduleErrors = errors.filter((error) => error.kind === "module_not_found");
   const tsErrors = errors.filter((error) => error.kind === "typescript_error");
+  const commandErrors = errors.filter((error) => error.kind === "command_not_found");
+
+  for (const error of commandErrors) {
+    const missingCommand = error.primary ?? command[0];
+    recommendations.push({
+      title: "Install or expose the missing agent command",
+      confidence: "high",
+      evidence: [
+        error.raw,
+        `Requested command: ${command[0]}`,
+        "The process failed before the agent could do any useful work."
+      ],
+      nextAction: `Install '${missingCommand}' or run the mission with a command that exists in this terminal session.`,
+      prompt: `The agent command '${missingCommand}' was not found. Do not retry the same command until the CLI is installed and available on PATH. First run '${missingCommand} --version' or choose another installed agent command, then rerun the mission.`
+    });
+  }
 
   for (const error of moduleErrors) {
     const imported = error.primary;
@@ -911,6 +942,7 @@ function shortSummary(mission) {
     `Parsed errors: ${mission.errors.length}`,
     `Primary recommendation: ${mission.rescue.recommendations[0]?.title}`,
     `Report: ${path.join(MISSIONS_DIR, mission.id, "report.md")}`,
+    `HTML: ${path.join(MISSIONS_DIR, mission.id, "report.html")}`,
     ""
   ].join("\n");
 }
@@ -986,6 +1018,107 @@ ${recommendationLines}
 - Error parsing: calculated from terminal logs
 - Rescue advice: generated from evidence packet, not from hidden assumptions
 `;
+}
+
+function formatHtmlReport(mission) {
+  const firstRecommendation = mission.rescue.recommendations[0] ?? {};
+  const firstError = mission.errors[0];
+  const statusLabel = mission.stuck.status === "stuck"
+    ? "Needs rescue"
+    : mission.stuck.status === "at_risk"
+      ? "Needs attention"
+      : "Moving";
+  const happened = firstError
+    ? firstError.raw
+    : mission.stuck.signals[0]?.evidence ?? "No critical failure pattern was parsed.";
+  const cause = firstError?.kind === "command_not_found"
+    ? `The command '${firstError.primary ?? mission.command[0]}' was not found in this terminal environment.`
+    : firstError?.sourceFile
+      ? `The failure points to ${firstError.sourceFile}.`
+      : mission.stuck.status === "progressing"
+        ? "No immediate blocker detected."
+        : "The run failed without enough artifact evidence to prove progress.";
+  const changed = mission.diffEvidence.changedFiles.length
+    ? mission.diffEvidence.changedFiles.join(", ")
+    : "No file changes were detected during this mission.";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Mission Report - ${escapeHtml(mission.label ?? mission.id)}</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0f1115; --panel:#181c22; --soft:#202630; --line:#303946; --text:#f5f7fb; --muted:#a7b0bd; --accent:#70d6ff; --warn:#ffd166; --bad:#ff6b6b; --good:#55d78a; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:linear-gradient(145deg,#141b24,#0f1115 45%); color:var(--text); }
+    main { max-width:980px; margin:0 auto; padding:36px 20px 56px; }
+    .notice, details { background:rgba(24,28,34,.96); border:1px solid var(--line); border-radius:10px; padding:22px; }
+    .notice { border-color:rgba(112,214,255,.5); box-shadow:0 20px 70px rgba(0,0,0,.28); }
+    h1 { margin:0 0 8px; font-size:30px; letter-spacing:0; }
+    h2 { margin:24px 0 10px; font-size:18px; }
+    p { line-height:1.58; color:var(--muted); }
+    .status { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:5px 10px; margin:0 8px 8px 0; color:var(--muted); font-size:13px; }
+    .stuck { color:var(--bad); border-color:rgba(255,107,107,.55); }
+    .at_risk { color:var(--warn); border-color:rgba(255,209,102,.55); }
+    .progressing { color:var(--good); border-color:rgba(85,215,138,.55); }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:22px 0; }
+    .card { background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:16px; }
+    .card strong { display:block; margin-bottom:8px; }
+    .action { background:#10151c; border:1px solid rgba(112,214,255,.55); border-radius:8px; padding:18px; margin-top:18px; }
+    .action-title { color:var(--accent); font-size:13px; font-weight:800; text-transform:uppercase; margin-bottom:8px; }
+    pre { white-space:pre-wrap; background:#0b0d10; border:1px solid var(--line); border-radius:8px; padding:14px; overflow:auto; line-height:1.55; color:var(--text); }
+    details { margin-top:16px; }
+    summary { cursor:pointer; color:var(--muted); font-weight:700; }
+    code { color:var(--accent); }
+    @media (max-width:760px) { .grid { grid-template-columns:1fr; } h1 { font-size:24px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="notice">
+      <span class="status ${escapeHtml(mission.stuck.status)}">${escapeHtml(statusLabel)}</span>
+      <span class="status">confidence: ${escapeHtml(mission.stuck.confidence)}</span>
+      <span class="status">exit: ${escapeHtml(String(mission.exitCode))}</span>
+      <h1>${escapeHtml(mission.label ?? mission.id)}</h1>
+      <p><code>${escapeHtml(mission.command.join(" "))}</code></p>
+      <div class="grid">
+        <div class="card"><strong>What happened</strong><p>${escapeHtml(happened)}</p></div>
+        <div class="card"><strong>Likely cause</strong><p>${escapeHtml(cause)}</p></div>
+        <div class="card"><strong>What changed</strong><p>${escapeHtml(changed)}</p></div>
+      </div>
+      <div class="action">
+        <div class="action-title">Recommended next step</div>
+        <p>${escapeHtml(firstRecommendation.nextAction ?? "Continue only with a clear verification command.")}</p>
+        <pre>${escapeHtml(firstRecommendation.prompt ?? "")}</pre>
+      </div>
+      <details>
+        <summary>Technical evidence</summary>
+        <pre>${escapeHtml(JSON.stringify({
+          missionId: mission.id,
+          errors: mission.errors,
+          stuckSignals: mission.stuck.signals,
+          diffEvidence: mission.diffEvidence,
+          truthLabels: {
+            fuel: mission.fuelUsedPercent === null ? "unknown_until_calibrated" : "manual_calibration",
+            progress: "observed_from_git_diff_and_command_result",
+            rescue: "generated_from_evidence_packet"
+          }
+        }, null, 2))}</pre>
+      </details>
+    </div>
+  </main>
+</body>
+</html>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
 }
 
 function renderDashboardHtml() {

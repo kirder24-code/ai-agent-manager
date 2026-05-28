@@ -1,0 +1,49 @@
+import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
+const root = path.resolve(import.meta.dirname, "..");
+
+const checks = [];
+
+await mustPass("syntax", ["npm", "run", "check"], (out) => out.includes("check"));
+await mustPass("unit validation", ["npm", "test"], (out) => out.includes("Validation passed"));
+await mustPass("doctor", ["npm", "run", "doctor"], (out) => out.includes("AI Agent Manager Doctor"));
+await mustPass("templates", ["node", "./bin/aim.mjs", "templates"], (out) => out.includes("Coding feature with proof"));
+await mustPass("preflight", ["node", "./bin/aim.mjs", "preflight", "--", "claude", "build the full mobile app with production deploy"], (out) => out.includes("Scope risk: high"));
+
+const demo = await run(["node", "./bin/aim.mjs", "run", "--label", "acceptance", "--fuel-before", "24", "--", "npm", "--prefix", "examples/broken-ts-app", "run", "build"]);
+if (!demo.includes("Status: stuck")) fail("demo run", demo);
+const missionId = demo.match(/AIM mission: ([^\n]+)/)?.[1]?.trim();
+if (!missionId) fail("mission id", demo);
+checks.push(["demo run", true]);
+
+await mustPass("export", ["node", "./bin/aim.mjs", "export", missionId], (out) => out.includes("Export written"));
+const exportJson = JSON.parse(await readFile(path.join(root, ".aim-control", "missions", missionId, "export.json"), "utf8"));
+if (exportJson.mission.status !== "stuck") fail("export status", JSON.stringify(exportJson, null, 2));
+if (!exportJson.mission.rescue.recommendations?.[0]?.prompt) fail("export rescue prompt", JSON.stringify(exportJson, null, 2));
+checks.push(["export content", true]);
+
+console.log("\nAcceptance passed:");
+for (const [name] of checks) console.log(`OK ${name}`);
+
+async function mustPass(name, args, predicate) {
+  const out = await run(args);
+  if (!predicate(out)) fail(name, out);
+  checks.push([name, true]);
+}
+
+function run(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(args[0], args.slice(1), { cwd: root, shell: false });
+    let output = "";
+    child.stdout.on("data", (chunk) => { output += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { output += chunk.toString(); });
+    child.on("error", reject);
+    child.on("close", () => resolve(output));
+  });
+}
+
+function fail(name, output) {
+  throw new Error(`Acceptance check failed: ${name}\n\n${output}`);
+}

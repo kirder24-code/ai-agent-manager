@@ -1,0 +1,31 @@
+{
+  "name": "ai-agent-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Evidence-based mission control for AI-agent work: preflight, stuck detection, rescue reports, local dashboard and cost gateway.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "aim": "./bin/aim.mjs"
+  },
+  "scripts": {
+    "setup": "node ./bin/aim.mjs setup",
+    "doctor": "node ./bin/aim.mjs doctor",
+    "demo": "node ./scripts/demo-flow.mjs",
+    "acceptance": "node ./scripts/acceptance.mjs",
+    "smoke": "node ./bin/aim.mjs run --label smoke -- npm --prefix examples/broken-ts-app run build",
+    "demo:broken": "node ./bin/aim.mjs run --label broken-ts-demo -- npm --prefix examples/broken-ts-app run build",
+    "test": "node ./scripts/validate-demo.mjs",
+    "status": "node ./bin/aim.mjs status",
+    "report": "node ./bin/aim.mjs report",
+    "export": "node ./bin/aim.mjs export",
+    "templates": "node ./bin/aim.mjs templates",
+    "dashboard": "node ./bin/aim.mjs dashboard",
+    "gateway": "node ./bin/aim.mjs gateway",
+    "fuel": "node ./bin/aim.mjs fuel",
+    "check": "node --check ./bin/aim.mjs && node --check ./src/mission-control.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

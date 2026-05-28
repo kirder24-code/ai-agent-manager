@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml)
 
-**AI Agent Manager is evidence-based mission control for AI-agent work.**
+**AI Agent Manager is an AI efficiency control layer for people and companies using agents.**
 
-It helps answer the question every serious AI-agent user eventually runs into:
+It helps answer the question every serious AI user eventually runs into:
 
 > Did the agent actually move the task forward, or did it just spend tokens and look busy?
 
-This prototype focuses on coding agents such as Codex, Claude Code, Cursor-style terminal agents, and local automation scripts.
+The long-term product goal is simple: spend less on AI work without losing quality. The first proof engine focuses on coding agents such as Codex, Claude Code, Cursor-style terminal agents, and local automation scripts because code gives objective evidence: terminal output, git diff, tests, changed files, and errors.
 
 ## What Problem It Solves
 
@@ -20,19 +20,19 @@ AI agents can spend minutes, hours, or subscription limits while:
 - changing nothing, but producing a confident summary;
 - consuming API tokens or visible subscription fuel without a finished result.
 
-AI Agent Manager watches the work from outside the agent and produces a simple rescue notice:
+AI Agent Manager watches work from outside the agent and turns it into an operating decision:
 
 ```text
-What happened?
-Likely cause?
-What changed?
-Recommended next step?
-Copyable rescue prompt?
+Should this AI run continue?
+Is the spend justified by evidence?
+Which model tier should handle the next step?
+Can the task be split into cheaper verified missions?
+What rescue prompt should be used if the agent is stuck?
 ```
 
-The point is not more dashboards. The point is a clearer answer:
+The point is not another token dashboard. The point is a clearer decision:
 
-> The agent is stuck here. This is the evidence. This is the smallest next prompt to try.
+> Stop wasting budget here. This is the evidence. This is the cheapest safe next step.
 
 ![AI Agent Manager dashboard rescue notice](docs/assets/dashboard-rescue-notice.png)
 
@@ -45,6 +45,7 @@ The point is not more dashboards. The point is a clearer answer:
 - Every mission also writes a standalone `report.html` that can be opened in a browser.
 - `aim export` writes an evidence JSON packet.
 - `aim dashboard` opens a local HTML dashboard focused on the problem and next step.
+- The dashboard explains spend risk, possible savings, quality risk, recommended model tier, and a cheaper task plan.
 - `aim gateway` starts an OpenAI-compatible local gateway for API usage tracking.
 - `aim gateway --mock` demonstrates gateway behavior without an API key.
 - `AIM_DAILY_BUDGET_USD` blocks calls after a local budget threshold.

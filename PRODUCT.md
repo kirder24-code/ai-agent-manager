@@ -2,19 +2,31 @@
 
 ## Status
 
-External local prototype ready for real-agent testing.
+External local prototype ready for real-agent testing. The current build is a proof engine for a broader AI efficiency product.
 
 ## What It Does
 
-AI Agent Manager is an evidence-based control layer for AI-agent work.
+AI Agent Manager is an AI efficiency control layer. It sits between a person or company and their AI agents, then helps plan, route, monitor, rescue, and learn from AI work.
+
+The commercial promise is:
+
+```text
+Spend less on AI work without losing quality.
+```
+
+The first measurable target is to reduce wasted AI sessions: broad prompts, stuck loops, repeated errors, expensive models used for cheap tasks, and agent output that cannot prove progress.
 
 It can:
 
 - preflight broad tasks before a costly agent run;
+- suggest smaller missions before spend starts;
+- explain spend risk and quality risk;
 - wrap terminal agents and commands;
 - record terminal output, exit code, git diff, changed files and parsed errors;
 - detect stuck or at-risk missions;
 - produce context-aware rescue prompts;
+- recommend whether to stop, continue, or switch into diagnosis;
+- estimate when a strong model is needed and when cheaper execution may be safe;
 - write standalone HTML mission reports;
 - calibrate visible subscription fuel percentages;
 - proxy OpenAI-compatible API traffic through a local gateway;

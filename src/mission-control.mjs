@@ -1129,40 +1129,57 @@ function renderDashboardHtml() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Agent Manager</title>
   <style>
-    :root { color-scheme: dark; --bg:#0f1115; --panel:#181c22; --soft:#202630; --line:#303946; --text:#f5f7fb; --muted:#a7b0bd; --good:#55d78a; --warn:#ffd166; --bad:#ff6b6b; --accent:#70d6ff; }
+    :root { color-scheme: dark; --bg:#0c1016; --panel:#151b24; --soft:#202938; --line:#2d3848; --text:#f6f8fc; --muted:#aab4c3; --good:#59d98e; --warn:#ffd166; --bad:#ff6b6b; --accent:#69d2ff; --violet:#b69cff; }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:radial-gradient(circle at top left, #17202b 0, var(--bg) 38%); color:var(--text); }
-    header { padding:26px 32px 18px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:20px; align-items:flex-end; }
-    h1 { margin:0; font-size:24px; font-weight:780; letter-spacing:0; }
-    h2 { margin:0; font-size:28px; letter-spacing:0; }
-    h3 { margin:0 0 10px; font-size:15px; color:var(--muted); font-weight:700; text-transform:uppercase; }
-    .sub { color:var(--muted); margin-top:6px; font-size:14px; }
-    main { display:grid; grid-template-columns: 340px minmax(0, 1fr); min-height: calc(100vh - 94px); }
-    aside { border-right:1px solid var(--line); padding:18px; overflow:auto; }
-    section { padding:28px; overflow:auto; }
+    body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:linear-gradient(135deg, #0b1017 0%, #111827 52%, #15131f 100%); color:var(--text); }
+    header { padding:28px 36px 22px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:20px; align-items:flex-end; }
+    h1 { margin:0; font-size:26px; font-weight:800; letter-spacing:0; }
+    h2 { margin:0; font-size:34px; letter-spacing:0; max-width:950px; line-height:1.12; }
+    h3 { margin:0 0 12px; font-size:14px; color:var(--muted); font-weight:800; text-transform:uppercase; }
+    .sub { color:var(--muted); margin-top:7px; font-size:14px; }
+    main { display:grid; grid-template-columns: 380px minmax(0, 1fr); min-height: calc(100vh - 98px); }
+    aside { border-right:1px solid var(--line); padding:18px; overflow:auto; background:rgba(10,14,20,0.38); }
+    section { padding:28px 32px 44px; overflow:auto; }
     .summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:18px; }
-    .mini, .mission, .notice, .step, details { background:rgba(24,28,34,0.94); border:1px solid var(--line); border-radius:8px; }
-    .mini { padding:12px; }
-    .mini strong { display:block; font-size:18px; }
+    .mini, .mission, .notice, .step, details, .planner, .roi-card, .metric { background:rgba(21,27,36,0.92); border:1px solid var(--line); border-radius:8px; }
+    .mini { padding:13px; min-height:74px; }
+    .mini strong { display:block; font-size:22px; }
     .mini span, .muted { color:var(--muted); font-size:13px; }
-    .mission { width:100%; color:inherit; text-align:left; margin:0 0 10px; cursor:pointer; padding:12px; }
+    .mission { width:100%; color:inherit; text-align:left; margin:0 0 10px; cursor:pointer; padding:13px; }
     .mission:hover, .mission.active { border-color:var(--accent); }
-    .mission.active { box-shadow: inset 3px 0 0 var(--accent); }
+    .mission.active { box-shadow: inset 3px 0 0 var(--accent); background:#182231; }
     .mission-title { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:6px; }
     .mission-name { font-weight:750; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .status { font-size:12px; padding:3px 8px; border-radius:999px; border:1px solid var(--line); white-space:nowrap; }
     .stuck { color:var(--bad); }
     .at_risk { color:var(--warn); }
     .progressing { color:var(--good); }
-    .notice { padding:24px; border-color:rgba(112,214,255,0.55); box-shadow:0 18px 60px rgba(0,0,0,0.22); }
+    .product-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,0.65fr); gap:16px; margin-bottom:16px; }
+    .notice { padding:28px; border-color:rgba(105,210,255,0.5); box-shadow:0 18px 60px rgba(0,0,0,0.24); }
     .notice.stuck { border-color:rgba(255,107,107,0.5); }
     .notice.at_risk { border-color:rgba(255,209,102,0.5); }
     .headline { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:18px; }
+    .hero-copy { color:var(--muted); line-height:1.6; font-size:17px; max-width:980px; margin:14px 0 0; }
+    .pill-row { margin-top:18px; }
     .badge { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--muted); font-size:12px; margin:0 6px 8px 0; }
     .badge.warn { color:var(--warn); border-color:rgba(255,209,102,0.55); }
     .badge.bad { color:var(--bad); border-color:rgba(255,107,107,0.55); }
+    .badge.good { color:var(--good); border-color:rgba(89,217,142,0.55); }
     .problem { color:var(--muted); line-height:1.6; font-size:16px; max-width:900px; }
     .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:18px 0; }
+    .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:20px; }
+    .metric { padding:14px; }
+    .metric strong { display:block; font-size:22px; }
+    .metric span { display:block; color:var(--muted); font-size:13px; margin-top:4px; }
+    .planner { padding:20px; }
+    .planner label { display:block; color:var(--muted); font-size:13px; margin-bottom:8px; }
+    textarea { width:100%; min-height:94px; resize:vertical; background:#0d121a; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:12px; font:inherit; line-height:1.5; }
+    .primary { margin-top:10px; border:1px solid rgba(105,210,255,0.65); background:#102333; color:var(--text); border-radius:8px; padding:10px 13px; cursor:pointer; font-weight:750; }
+    .primary:hover { background:#143149; }
+    .planner-result { margin-top:14px; color:var(--muted); line-height:1.55; }
+    .planner-result strong { color:var(--text); }
+    .roi-card { padding:18px; margin-bottom:16px; border-color:rgba(89,217,142,0.35); }
+    .roi-card strong { color:var(--good); }
     .step { padding:16px; }
     .step strong { display:block; margin-bottom:8px; font-size:16px; }
     .step p { color:var(--muted); line-height:1.5; margin:0; }
@@ -1175,14 +1192,15 @@ function renderDashboardHtml() {
     summary { cursor:pointer; color:var(--muted); font-weight:700; }
     pre { white-space:pre-wrap; background:#0b0d10; border:1px solid var(--line); border-radius:8px; padding:14px; line-height:1.5; overflow:auto; }
     code { color:var(--accent); }
-    @media (max-width: 980px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .grid { grid-template-columns:1fr; } }
+    .decision { font-size:18px; color:var(--warn); font-weight:800; }
+    @media (max-width: 1120px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .product-grid, .grid, .metrics { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>AI Agent Manager</h1>
-      <div class="sub">A clear rescue notice for stuck AI-agent work</div>
+      <div class="sub">Spend less on AI work, keep quality, and stop agents before they waste budget.</div>
     </div>
     <div class="sub"><span id="fuel">Fuel: loading...</span><br><span id="truth">Truth: loading...</span></div>
   </header>
@@ -1198,7 +1216,7 @@ function renderDashboardHtml() {
       <div id="missions"></div>
     </aside>
     <section id="detail">
-      <div class="notice"><p class="muted">Select a mission to see the problem, the likely cause, and the next recommended action.</p></div>
+      <div class="notice"><p class="muted">Loading AI work manager...</p></div>
     </section>
   </main>
   <script>
@@ -1218,6 +1236,7 @@ function renderDashboardHtml() {
       document.getElementById("cost").textContent = "$" + status.gateway.estimatedCostUsd;
       renderList();
       if (!state.selected && missions[0]) showMission(missions[0].id);
+      if (!missions[0]) renderEmpty();
     }
     function renderList() {
       document.getElementById("missions").innerHTML = state.missions.map((m) =>
@@ -1233,20 +1252,39 @@ function renderDashboardHtml() {
       renderList();
       const m = await fetch("/api/missions/" + encodeURIComponent(id)).then((r) => r.json());
       const d = diagnose(m);
+      const roi = estimateRoi(m);
       const rec = m.rescue.recommendations[0] || {};
       document.getElementById("detail").innerHTML =
+        '<div class="product-grid">' +
         '<div class="notice ' + esc(m.stuck.status) + '">' +
-        '<div class="headline"><div><h2>' + esc(d.title) + '</h2><p class="problem">' + esc(d.description) + '</p></div><span class="status ' + esc(m.stuck.status) + '">' + labelStatus(m.stuck.status) + '</span></div>' +
-        '<p><span class="badge ' + (m.stuck.status === "stuck" ? "bad" : m.stuck.status === "at_risk" ? "warn" : "") + '">confidence: ' + esc(m.stuck.confidence) + '</span><span class="badge">exit code: ' + esc(m.exitCode) + '</span><span class="badge">fuel: ' + esc(m.fuelUsedPercent === null ? "not calibrated" : m.fuelUsedPercent + "%") + '</span></p>' +
-        '<div class="grid">' +
-        '<div class="step"><strong>What happened</strong><p>' + esc(d.happened) + '</p></div>' +
-        '<div class="step"><strong>Likely cause</strong><p>' + esc(d.cause) + '</p></div>' +
-        '<div class="step"><strong>What changed</strong><p>' + esc(d.changed) + '</p></div>' +
+        '<div class="headline"><div><h2>' + esc(d.title) + '</h2><p class="hero-copy">' + esc(d.description) + '</p></div><span class="status ' + esc(m.stuck.status) + '">' + labelStatus(m.stuck.status) + '</span></div>' +
+        '<div class="pill-row"><span class="badge ' + (m.stuck.status === "stuck" ? "bad" : m.stuck.status === "at_risk" ? "warn" : "good") + '">manager decision: ' + esc(d.managerDecision) + '</span><span class="badge">quality guard: ' + esc(d.qualityGuard) + '</span><span class="badge">fuel: ' + esc(m.fuelUsedPercent === null ? "needs calibration" : m.fuelUsedPercent + "%") + '</span></div>' +
+        '<div class="metrics">' +
+        '<div class="metric"><strong>' + esc(roi.spendRisk) + '</strong><span>spend risk</span></div>' +
+        '<div class="metric"><strong>' + esc(roi.expectedSaving) + '</strong><span>possible saving</span></div>' +
+        '<div class="metric"><strong>' + esc(roi.qualityRisk) + '</strong><span>quality risk</span></div>' +
+        '<div class="metric"><strong>' + esc(roi.bestModelTier) + '</strong><span>recommended tier</span></div>' +
         '</div>' +
-        '<div class="action"><div class="action-title">Recommended next step</div><p>' + esc(rec.nextAction || d.next) + '</p><button class="copy" onclick="copyPrompt()">Copy rescue prompt</button><pre id="prompt-main" class="prompt">' + esc(rec.prompt || d.next) + '</pre></div>' +
+        '</div>' +
+        '<div class="planner">' +
+        '<h3>Plan the next AI task</h3>' +
+        '<label for="task-input">Describe what you want the agent to do</label>' +
+        '<textarea id="task-input" placeholder="Example: build login, fix the failing test, create a video script, summarize customer calls...">' + esc(seedTask(m)) + '</textarea>' +
+        '<button class="primary" onclick="planTask()">Create cheaper plan</button>' +
+        '<div id="planner-result" class="planner-result"></div>' +
+        '</div>' +
+        '</div>' +
+        '<div class="roi-card"><strong>What this app is supposed to save:</strong> it turns one expensive, vague AI run into smaller missions with proof, model choice, stop rules, and rescue prompts. The goal is not fewer tokens at any cost. The goal is less wasted intelligence for the same or better result.</div>' +
+        '<div class="grid">' +
+        '<div class="step"><strong>1. What the manager sees</strong><p>' + esc(d.happened) + '</p></div>' +
+        '<div class="step"><strong>2. Why it matters</strong><p>' + esc(d.cause) + '</p></div>' +
+        '<div class="step"><strong>3. Proof of progress</strong><p>' + esc(d.changed) + '</p></div>' +
+        '</div>' +
+        '<div class="action"><div class="action-title">Recommended next step</div><p class="decision">' + esc(rec.nextAction || d.next) + '</p><button class="copy" onclick="copyPrompt()">Copy rescue prompt</button><pre id="prompt-main" class="prompt">' + esc(rec.prompt || d.next) + '</pre></div>' +
         '<details><summary>Technical evidence</summary><pre>' + esc(JSON.stringify({ command:m.command.join(" "), changedFiles:m.diffEvidence.changedFiles, parsedErrors:m.errors, stuckSignals:m.stuck.signals, scopeRisk:m.preflight.scopeRisk }, null, 2)) + '</pre></details>' +
         '<details><summary>Truth labels</summary><pre>Cost/Fuel: ' + (m.fuelUsedPercent === null ? 'unknown until calibrated' : 'manual calibration') + '\\nProgress proof: observed from git diff and command result\\nError parsing: calculated from terminal logs\\nRescue advice: generated from evidence packet</pre></details>' +
         '</div>';
+      planTask();
     }
     function copyPrompt() {
       const text = document.getElementById("prompt-main")?.textContent || "";
@@ -1266,6 +1304,42 @@ function renderDashboardHtml() {
       if (m.exitCode !== 0) return "command failed, no parsed error";
       return m.changedFileCount + " file change(s)";
     }
+    function renderEmpty() {
+      document.getElementById("detail").innerHTML =
+        '<div class="product-grid">' +
+        '<div class="notice"><h2>Tell the manager what AI work you want done</h2><p class="hero-copy">This app should estimate effort, choose the right model tier, split the task into cheaper missions, and stop waste before it becomes a bill.</p><div class="metrics"><div class="metric"><strong>Plan</strong><span>before spending</span></div><div class="metric"><strong>Route</strong><span>right model</span></div><div class="metric"><strong>Prove</strong><span>real progress</span></div><div class="metric"><strong>Rescue</strong><span>when stuck</span></div></div></div>' +
+        '<div class="planner"><h3>Plan the next AI task</h3><label for="task-input">Describe the task</label><textarea id="task-input" placeholder="Build a landing page, edit a video script, create a report, fix a bug..."></textarea><button class="primary" onclick="planTask()">Create cheaper plan</button><div id="planner-result" class="planner-result"></div></div>' +
+        '</div>';
+    }
+    function seedTask(m) {
+      const command = Array.isArray(m.command) ? m.command.join(" ") : String(m.command || "");
+      return command.replace(/^.*?(codex|claude)\\s+["']?/i, "").replace(/["']?$/, "").slice(0, 260);
+    }
+    function estimateRoi(m) {
+      const noChanges = m.diffEvidence.changedFiles.length === 0;
+      const failed = m.exitCode !== 0;
+      const broad = m.preflight.scopeRisk === "high";
+      return {
+        spendRisk: failed && noChanges ? "High" : m.stuck.status === "at_risk" ? "Medium" : "Low",
+        expectedSaving: failed || broad ? "30-70%" : "10-25%",
+        qualityRisk: broad ? "High" : failed ? "Medium" : "Low",
+        bestModelTier: broad || failed ? "Strong first" : "Cheap ok"
+      };
+    }
+    function planTask() {
+      const input = document.getElementById("task-input");
+      const result = document.getElementById("planner-result");
+      if (!input || !result) return;
+      const text = input.value.trim();
+      const words = text.split(/\\s+/).filter(Boolean).length;
+      const looksBig = words > 18 || /full|entire|complete|whole|production|app|platform|everything/i.test(text);
+      const isCreative = /video|script|post|content|image|marketing|copy/i.test(text);
+      const isCode = /code|bug|test|build|app|api|database|typescript|react|python/i.test(text);
+      const tier = looksBig ? "strong model for planning, cheaper model for execution" : isCreative ? "cheap model first, strong model only for final polish" : isCode ? "strong model for diagnosis, cheaper model for narrow edits" : "cheap model first";
+      const missions = looksBig ? "Split into discovery, plan, first artifact, verification, cleanup." : "Run one narrow mission with one proof command.";
+      const stopRule = isCode ? "Stop if tests fail twice with the same error or no files change." : "Stop if the output repeats itself or does not create a usable artifact.";
+      result.innerHTML = '<strong>Recommended routing:</strong> ' + esc(tier) + '<br><strong>Cheaper plan:</strong> ' + esc(missions) + '<br><strong>Stop rule:</strong> ' + esc(stopRule);
+    }
     function diagnose(m) {
       const firstError = m.errors[0];
       const firstSignal = m.stuck.signals[0];
@@ -1275,9 +1349,11 @@ function renderDashboardHtml() {
       if (m.stuck.status === "stuck") {
         return {
           title: "The agent is stuck",
-          description: "The run failed and there is not enough evidence that the task moved forward. Do not continue with a broad prompt yet.",
+          description: "The current AI run is spending effort without proving useful progress. The manager should stop broad execution, protect budget, and switch into diagnosis.",
+          managerDecision: "stop and rescue",
+          qualityGuard: "do not continue blindly",
           happened: firstError ? firstError.raw : firstSignal ? firstSignal.evidence : "The command failed.",
-          cause: firstError?.sourceFile ? "The failure points to " + firstError.sourceFile + "." : "The agent needs a diagnosis pass before more implementation.",
+          cause: firstError?.sourceFile ? "The failure points to " + firstError.sourceFile + ". A cheaper rerun without diagnosis is likely to repeat the same failure." : "The agent needs a diagnosis pass before more implementation.",
           changed,
           next: "Run a narrow diagnostic prompt and ask the agent for the smallest fix."
         };
@@ -1285,16 +1361,20 @@ function renderDashboardHtml() {
       if (m.stuck.status === "at_risk") {
         return {
           title: "This run needs attention",
-          description: "The agent did not clearly finish the task. Review the recommended next step before spending more tokens.",
+          description: "The agent may still be useful, but the manager cannot prove that more tokens will improve the result. Confirm the next step before spending more.",
+          managerDecision: "check before spend",
+          qualityGuard: "needs proof",
           happened: m.exitCode === 127 ? "The command could not be executed correctly." : "The run ended with warning signals.",
-          cause: firstSignal ? firstSignal.evidence : "The system could not prove clean progress.",
+          cause: firstSignal ? firstSignal.evidence : "The system could not prove clean progress. This is where AI budgets usually leak.",
           changed,
           next: "Ask for diagnosis first, then rerun with one verification command."
         };
       }
       return {
         title: "The task appears to be moving",
-        description: "No strong stuck pattern was detected. Continue with checkpoints and verification.",
+        description: "The run has enough evidence to continue, but it should still move through small verified missions instead of one unlimited agent session.",
+        managerDecision: "continue with checkpoint",
+        qualityGuard: "verify next",
         happened: "The run completed without major stuck signals.",
         cause: "No immediate blocker detected.",
         changed,

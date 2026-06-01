@@ -315,6 +315,9 @@ export async function startDashboard({ port = 8791 } = {}) {
           quality: body.quality,
           fuelPercent: Number.isFinite(Number(body.fuelPercent)) ? Number(body.fuelPercent) : undefined
         }), 201);
+      } else if (url.pathname.startsWith("/api/plans/")) {
+        const id = decodeURIComponent(url.pathname.replace("/api/plans/", ""));
+        sendJson(response, await readPlan(id));
       } else if (url.pathname === "/api/gateway") {
         sendJson(response, await readGatewaySummary());
       } else if (url.pathname.startsWith("/api/missions/")) {
@@ -1467,6 +1470,8 @@ function renderDashboardHtml() {
         <div class="mini"><strong id="tokens">0</strong><span>API tokens</span></div>
         <div class="mini"><strong id="cost">$0</strong><span>API estimate</span></div>
       </div>
+      <div class="side-title">Saved plans</div>
+      <div id="plans"></div>
       <div class="side-title">Recent agent checks</div>
       <div id="missions"></div>
     </aside>
@@ -1476,14 +1481,16 @@ function renderDashboardHtml() {
     </main>
   </div>
   <script>
-    const state = { selected: null, missions: [], view: "plan" };
+    const state = { selected: null, selectedPlan: null, missions: [], plans: [], view: "plan", plannerRendered: false };
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
     async function load() {
-      const [status, missions] = await Promise.all([
+      const [status, missions, plans] = await Promise.all([
         fetch("/api/status").then((r) => r.json()),
-        fetch("/api/missions").then((r) => r.json())
+        fetch("/api/missions").then((r) => r.json()),
+        fetch("/api/plans").then((r) => r.json())
       ]);
       state.missions = missions;
+      state.plans = plans;
       document.getElementById("fuel").textContent = status.fuel.currentPercent === null ? "Fuel: unknown" : "Fuel: " + status.fuel.currentPercent + "%";
       document.getElementById("truth").textContent = "Gateway truth: " + status.gateway.truth;
       document.getElementById("total").textContent = status.missionCount;
@@ -1491,7 +1498,8 @@ function renderDashboardHtml() {
       document.getElementById("tokens").textContent = status.gateway.totalTokens;
       document.getElementById("cost").textContent = "$" + status.gateway.estimatedCostUsd;
       renderList();
-      renderPlanner(status);
+      renderPlans();
+      if (!state.plannerRendered) renderPlanner(status);
       if (!state.selected && missions[0]) showMission(missions[0].id, false);
       if (!missions[0]) renderEmptyMonitor();
     }
@@ -1511,7 +1519,17 @@ function renderDashboardHtml() {
         '</button>'
       ).join("");
     }
+    function renderPlans() {
+      document.getElementById("plans").innerHTML = state.plans.slice(0, 6).map((plan) =>
+        '<button class="mission ' + (plan.id === state.selectedPlan ? 'active' : '') + '" onclick="showPlan(\\'' + esc(plan.id) + '\\')">' +
+        '<div class="mission-head"><span class="mission-name">' + esc(plan.goal || plan.id.slice(0, 18)) + '</span><span class="status at_risk">' + esc(plan.budget?.risk || "plan") + '</span></div>' +
+        '<div class="mission-line">saving: ' + esc(plan.budget?.expectedWasteReduction || "unknown") + '</div>' +
+        '<div class="mission-line">' + esc(plan.routing?.planningTier || "routing unknown") + '</div>' +
+        '</button>'
+      ).join("");
+    }
     function renderPlanner(status) {
+      state.plannerRendered = true;
       const fuel = status.fuel.currentPercent === null ? 24 : Number(status.fuel.currentPercent);
       document.getElementById("plan-view").innerHTML =
         '<div class="hero">' +
@@ -1530,6 +1548,32 @@ function renderDashboardHtml() {
         '</div>' +
         '</div>' +
         '<div id="planner-result"><div class="panel"><h3>Ready when you are</h3><p class="hero-copy">Create a managed plan to save it locally, generate mission steps, and get copyable commands for agent runs.</p></div></div>';
+    }
+    function renderPlan(plan) {
+      const result = document.getElementById("planner-result");
+      if (!result) return;
+      result.innerHTML =
+        '<div class="plan-grid">' +
+        '<div class="plan-card"><strong>Budget decision</strong><p>Risk: <b>' + esc(plan.budget.risk) + '</b>. Expected waste reduction: <b>' + esc(plan.budget.expectedWasteReduction) + '</b>. ' + esc(plan.budget.reason) + '</p></div>' +
+        '<div class="plan-card"><strong>Model routing</strong><p>Planning: <b>' + esc(plan.routing.planningTier) + '</b>. Execution: <b>' + esc(plan.routing.executionTier) + '</b></p></div>' +
+        '<div class="plan-card"><strong>Quality proof</strong><p>' + esc(plan.quality.proof) + '</p></div>' +
+        '</div>' +
+        '<div class="timeline">' +
+        plan.missions.map((mission, index) => '<div class="step"><div class="num">' + (index + 1) + '</div><div><strong>' + esc(mission.name) + '</strong><p>' + esc(mission.instruction) + '</p><p class="muted">Proof: ' + esc(mission.proof) + '</p></div></div>').join("") +
+        '<div class="step"><div class="num">!</div><div><strong>Stop rule</strong><p>' + esc(plan.stopRule) + '</p></div></div>' +
+        '</div>' +
+        '<details open><summary>Copyable agent commands</summary><pre>' + esc(plan.commandTemplates.map((item) => item.command).join("\\n\\n")) + '</pre></details>' +
+        '<details><summary>Plan truth labels</summary><pre>' + esc(JSON.stringify(plan.truth, null, 2)) + '</pre></details>';
+      window.lastPlanText = "AI Agent Manager plan\\nPlan: " + plan.id + "\\nGoal: " + plan.goal + "\\nBudget risk: " + plan.budget.risk + "\\nExpected waste reduction: " + plan.budget.expectedWasteReduction + "\\nPlanning model: " + plan.routing.planningTier + "\\nExecution model: " + plan.routing.executionTier + "\\nProof: " + plan.quality.proof + "\\nStop rule: " + plan.stopRule + "\\n\\nCommands:\\n" + plan.commandTemplates.map((item) => item.command).join("\\n\\n");
+    }
+    async function showPlan(id) {
+      state.selectedPlan = id;
+      setView("plan");
+      renderPlans();
+      const plan = await fetch("/api/plans/" + encodeURIComponent(id)).then((r) => r.json());
+      const input = document.getElementById("task-input");
+      if (input) input.value = plan.goal;
+      renderPlan(plan);
     }
     async function showMission(id, activate = true) {
       state.selected = id;
@@ -1629,19 +1673,10 @@ function renderDashboardHtml() {
         result.innerHTML = '<div class="panel"><h3>Plan failed</h3><p class="hero-copy">' + esc(error.message) + '</p></div>';
         return;
       }
-      result.innerHTML =
-        '<div class="plan-grid">' +
-        '<div class="plan-card"><strong>Budget decision</strong><p>Risk: <b>' + esc(plan.budget.risk) + '</b>. Expected waste reduction: <b>' + esc(plan.budget.expectedWasteReduction) + '</b>. ' + esc(plan.budget.reason) + '</p></div>' +
-        '<div class="plan-card"><strong>Model routing</strong><p>Planning: <b>' + esc(plan.routing.planningTier) + '</b>. Execution: <b>' + esc(plan.routing.executionTier) + '</b></p></div>' +
-        '<div class="plan-card"><strong>Quality proof</strong><p>' + esc(plan.quality.proof) + '</p></div>' +
-        '</div>' +
-        '<div class="timeline">' +
-        plan.missions.map((mission, index) => '<div class="step"><div class="num">' + (index + 1) + '</div><div><strong>' + esc(mission.name) + '</strong><p>' + esc(mission.instruction) + '</p><p class="muted">Proof: ' + esc(mission.proof) + '</p></div></div>').join("") +
-        '<div class="step"><div class="num">!</div><div><strong>Stop rule</strong><p>' + esc(plan.stopRule) + '</p></div></div>' +
-        '</div>' +
-        '<details open><summary>Copyable agent commands</summary><pre>' + esc(plan.commandTemplates.map((item) => item.command).join("\\n\\n")) + '</pre></details>' +
-        '<details><summary>Plan truth labels</summary><pre>' + esc(JSON.stringify(plan.truth, null, 2)) + '</pre></details>';
-      window.lastPlanText = "AI Agent Manager plan\\nPlan: " + plan.id + "\\nGoal: " + plan.goal + "\\nBudget risk: " + plan.budget.risk + "\\nExpected waste reduction: " + plan.budget.expectedWasteReduction + "\\nPlanning model: " + plan.routing.planningTier + "\\nExecution model: " + plan.routing.executionTier + "\\nProof: " + plan.quality.proof + "\\nStop rule: " + plan.stopRule + "\\n\\nCommands:\\n" + plan.commandTemplates.map((item) => item.command).join("\\n\\n");
+      state.selectedPlan = plan.id;
+      state.plans = [plan, ...state.plans.filter((item) => item.id !== plan.id)];
+      renderPlans();
+      renderPlan(plan);
     }
     function copyPlan() {
       navigator.clipboard?.writeText(window.lastPlanText || "");

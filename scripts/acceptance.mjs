@@ -18,6 +18,7 @@ if (!planId) fail("plan id", planOutput);
 const planJson = JSON.parse(await readFile(path.join(root, ".aim-control", "plans", planId, "plan.json"), "utf8"));
 if (!planJson.commandTemplates?.[0]?.command) fail("plan command templates", JSON.stringify(planJson, null, 2));
 checks.push(["plan", true]);
+await mustPass("plans list", ["node", "./bin/aim.mjs", "plans"], (out) => out.includes(planId));
 
 const demo = await run(["node", "./bin/aim.mjs", "run", "--label", "acceptance", "--fuel-before", "24", "--", "npm", "--prefix", "examples/broken-ts-app", "run", "build"]);
 if (!demo.includes("Status: stuck")) fail("demo run", demo);

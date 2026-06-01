@@ -40,6 +40,8 @@ The point is not another token dashboard. The point is a clearer decision:
 
 - Mission Planner turns a broad AI request into smaller managed steps before spend starts.
 - It recommends a planning model tier, execution tier, quality proof, and stop rule.
+- Saved plans are stored as `plan.json` and `plan.md` with copyable agent commands.
+- The dashboard shows saved plans, so previous planning decisions can be reused instead of re-prompted.
 - `aim preflight` checks whether a prompt is too broad before the agent starts.
 - `aim run -- <command>` wraps an agent or command and records the mission.
 - Terminal output, exit code, git diff, changed files, parsed errors, and stuck signals are captured.
@@ -92,6 +94,14 @@ Create a saved AI work plan before spending agent budget:
 ```bash
 node ./bin/aim.mjs plan --fuel 24 --quality high -- "Build a mobile app MVP with login, database, dashboard and deployment"
 node ./bin/aim.mjs plans
+```
+
+Local planner API:
+
+```text
+GET  /api/plans
+POST /api/plans
+GET  /api/plans/:id
 ```
 
 ## Real Usage With an Agent

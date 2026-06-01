@@ -5,9 +5,9 @@
 Wrap agent commands instead of launching them directly:
 
 ```bash
-node ./bin/aim.mjs run --label auth-fix -- claude "fix the auth bug"
-node ./bin/aim.mjs run --label codex-pass -- codex "implement settings screen"
-node ./bin/aim.mjs run --label verify -- npm test
+runcap run --label auth-fix -- claude "fix the auth bug"
+runcap run --label codex-pass -- codex "implement settings screen"
+runcap run --label verify -- npm test
 ```
 
 On macOS, non-terminal users can double-click `Run Agent.command` and paste the same command into the dialog.
@@ -25,7 +25,7 @@ The wrapper records:
 Start the gateway:
 
 ```bash
-OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
+OPENAI_API_KEY=sk-... runcap gateway
 ```
 
 Point tools to:
@@ -42,7 +42,7 @@ The upstream key remains local to the gateway process. Gateway events are stored
 For demos and tests:
 
 ```bash
-node ./bin/aim.mjs gateway --mock
+runcap gateway --mock
 ```
 
 Then:
@@ -58,7 +58,7 @@ curl -s -X POST http://127.0.0.1:8792/v1/chat/completions \
 Block new gateway calls after estimated spend reaches a local limit:
 
 ```bash
-AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
+AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... runcap gateway
 ```
 
 Budget labels are deliberately conservative:
@@ -73,9 +73,9 @@ Budget labels are deliberately conservative:
 The safest first integration is command wrapping:
 
 ```bash
-node ./bin/aim.mjs run --label cursor-task -- cursor-agent-command ...
-node ./bin/aim.mjs run --label claude-task -- claude "..."
-node ./bin/aim.mjs run --label codex-task -- codex "..."
+runcap run --label cursor-task -- cursor-agent-command ...
+runcap run --label claude-task -- claude "..."
+runcap run --label codex-task -- codex "..."
 ```
 
 If a tool supports custom OpenAI-compatible base URLs, point it to the gateway as well.

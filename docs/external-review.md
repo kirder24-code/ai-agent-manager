@@ -2,7 +2,7 @@
 
 ## One-Liner
 
-AI Agent Manager is evidence-based mission control for AI agents. It watches agent work, proves progress, catches stuck loops, controls model spend, and produces rescue prompts when the agent stops moving the task forward.
+Runcap is evidence-based mission control for AI agents. It watches agent work, proves progress, catches stuck loops, controls model spend, and produces rescue prompts when the agent stops moving the task forward.
 
 ## Problem
 
@@ -32,7 +32,7 @@ The prototype is local-only:
 
 ## Current Dashboard
 
-![AI Agent Manager dashboard rescue notice](assets/dashboard-rescue-notice.png)
+![Runcap dashboard rescue notice](assets/dashboard-rescue-notice.png)
 
 ## Demo
 

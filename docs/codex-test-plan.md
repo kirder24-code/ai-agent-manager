@@ -1,6 +1,6 @@
 # Codex Test Plan
 
-Use this when you are ready to test AI Agent Manager on Codex itself.
+Use this when you are ready to test Runcap on Codex itself.
 
 ## Goal
 
@@ -9,10 +9,10 @@ Verify that the manager can turn a failed or incomplete Codex session into a use
 ## Test 1: Narrow Coding Task
 
 ```bash
-node ./bin/aim.mjs preflight -- codex "Add one CLI command called hello that prints hello. Verify with npm run check."
-node ./bin/aim.mjs run --label codex-hello -- codex "Add one CLI command called hello that prints hello. Verify with npm run check. Stop if blocked."
-node ./bin/aim.mjs report
-node ./bin/aim.mjs export
+runcap preflight -- codex "Add one CLI command called hello that prints hello. Verify with npm run check."
+runcap run --label codex-hello -- codex "Add one CLI command called hello that prints hello. Verify with npm run check. Stop if blocked."
+runcap report
+runcap export
 ```
 
 Pass if:
@@ -24,7 +24,7 @@ Pass if:
 ## Test 2: Intentionally Broad Task
 
 ```bash
-node ./bin/aim.mjs preflight -- codex "Build a full SaaS app with auth, payments, dashboard, deployment and tests."
+runcap preflight -- codex "Build a full SaaS app with auth, payments, dashboard, deployment and tests."
 ```
 
 Pass if:
@@ -47,9 +47,9 @@ Pass if:
 Before a real subscription-heavy run:
 
 ```bash
-node ./bin/aim.mjs fuel set 24
-node ./bin/aim.mjs run --label codex-real --fuel-before 24 -- codex "<task>"
-node ./bin/aim.mjs fuel calibrate <mission-id> 19
+runcap fuel set 24
+runcap run --label codex-real --fuel-before 24 -- codex "<task>"
+runcap fuel calibrate <mission-id> 19
 ```
 
 Pass if:

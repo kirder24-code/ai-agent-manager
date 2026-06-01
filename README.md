@@ -1,217 +1,155 @@
-# AI Agent Manager
+# Runcap
 
 [![CI](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml)
 
-**AI Agent Manager is an AI efficiency control layer for people and companies using agents.**
+**Know what your coding agent will cost before you build it — and set a hard ceiling so it never surprises you.**
 
-It helps answer the question every serious AI user eventually runs into:
+Runcap estimates the cost of an agent run as a range, enforces a hard spend ceiling that physically stops the run, and when the agent gets stuck it hands you the exact rescue prompt. Free, MIT, 100% local. Your code and tokens never touch a server.
 
-> Did the agent actually move the task forward, or did it just spend tokens and look busy?
+> Every other tool here is a rear-view mirror — it shows you the bill *after* you paid it. Runcap estimates the bill *before* you start and caps it. It is a circuit breaker, not a dashboard.
 
-The long-term product goal is simple: spend less on AI work without losing quality. The first proof engine focuses on coding agents such as Codex, Claude Code, Cursor-style terminal agents, and local automation scripts because code gives objective evidence: terminal output, git diff, tests, changed files, and errors.
+## Why
 
-## What Problem It Solves
+Multi-agent coding runs burn roughly **15x more tokens** than a single chat ([Anthropic engineering](https://www.anthropic.com/engineering/built-multi-agent-research-system)). Agents loop on the same error, rewrite plans, and hand you a confident summary while the task is not actually done. You find out what it cost when the invoice — or the subscription limit — arrives.
 
-AI agents can spend minutes, hours, or subscription limits while:
-
-- looping around the same error;
-- rewriting plans instead of fixing the blocker;
-- failing a terminal command without explaining the real cause;
-- changing nothing, but producing a confident summary;
-- consuming API tokens or visible subscription fuel without a finished result.
-
-AI Agent Manager watches work from outside the agent and turns it into an operating decision:
+Observability tools (Langfuse, Helicone, LangSmith, AgentOps) measure the past. Gateways (LiteLLM, Portkey, OpenRouter) route the present. None of them stop the spend *before* it happens. Runcap does the one thing the rear-view mirror can't:
 
 ```text
-Should this AI run continue?
-Is the spend justified by evidence?
-Which model tier should handle the next step?
-Can the task be split into cheaper verified missions?
-What rescue prompt should be used if the agent is stuck?
+estimate before build  →  cap during run  →  rescue when stuck  →  verify it finished
 ```
 
-The point is not another token dashboard. The point is a clearer decision:
+## The honest claim
 
-> Stop wasting budget here. This is the evidence. This is the cheapest safe next step.
+Runcap does **not** promise an exact cost oracle. Agent trajectories are stochastic — nobody, including the model labs, can predict the exact token count of a run. So Runcap gives you a **range plus a hard cap**:
 
-![AI Agent Manager dashboard rescue notice](docs/assets/dashboard-rescue-notice.png)
+> "This build is roughly $3–7. Cap it at $10." — then it kills the run the second it hits the ceiling.
 
-## What Works Today
+The range is the headline. The hard cap is the product.
 
-- Mission Planner turns a broad AI request into smaller managed steps before spend starts.
-- It recommends a planning model tier, execution tier, quality proof, and stop rule.
-- Saved plans are stored as `plan.json` and `plan.md` with copyable agent commands.
-- The dashboard shows saved plans, so previous planning decisions can be reused instead of re-prompted.
-- `aim preflight` checks whether a prompt is too broad before the agent starts.
-- `aim run -- <command>` wraps an agent or command and records the mission.
-- Terminal output, exit code, git diff, changed files, parsed errors, and stuck signals are captured.
-- `aim report` creates a human-readable rescue report.
-- Every mission also writes a standalone `report.html` that can be opened in a browser.
-- `aim export` writes an evidence JSON packet.
-- `aim dashboard` opens a local HTML dashboard focused on the problem and next step.
-- The dashboard explains spend risk, possible savings, quality risk, recommended model tier, and a cheaper task plan.
-- `aim gateway` starts an OpenAI-compatible local gateway for API usage tracking.
-- `aim gateway --mock` demonstrates gateway behavior without an API key.
-- `AIM_DAILY_BUDGET_USD` blocks calls after a local budget threshold.
-- `aim fuel` supports manual calibration for subscriptions that only show percentages.
+## 60-second demo
 
-## Five-Minute Demo
-
-No API key is required.
+No API key required.
 
 ```bash
 git clone https://github.com/kirder24-code/ai-agent-manager.git
 cd ai-agent-manager
 npm run setup
-npm run doctor
 npm run demo
-npm run acceptance
 ```
 
-On macOS, you can also use the double-click launchers:
+**1. Catch a too-broad request before it spends anything:**
 
 ```text
-Open Dashboard.command
-Run Agent.command
+$ runcap preflight -- claude "build the full mobile app with auth payments and production deploy"
+
+Preflight: claude build the full mobile app with auth payments and production deploy
+Scope risk: high
+Fuel: 24% (medium confidence)
+Recommendation: Do not launch as one broad mission. Split into one vertical slice with a verification command.
 ```
 
-Open the dashboard:
-
-```bash
-npm run dashboard
-```
-
-Then visit:
+**2. Wrap a run — and get a rescue prompt the moment it gets stuck:**
 
 ```text
-http://127.0.0.1:8791
+$ runcap run --label demo -- npm run build
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@/components' ...
+
+Runcap mission: 20260601T221531-demo-ff42c0a
+Status: stuck (medium confidence)
+Exit code: 1
+Changed files: 0
+Parsed errors: 1
+Primary recommendation: Resolve missing import before continuing feature work
 ```
 
-The included demo intentionally runs a broken TypeScript project so the manager can show a stuck run, the likely cause, and a rescue prompt.
-
-Create a saved AI work plan before spending agent budget:
-
-```bash
-node ./bin/aim.mjs plan --fuel 24 --quality high -- "Build a mobile app MVP with login, database, dashboard and deployment"
-node ./bin/aim.mjs plans
-```
-
-Local planner API:
+The rescue report hands back a copyable prompt:
 
 ```text
-GET  /api/plans
-POST /api/plans
-GET  /api/plans/:id
+Do not continue broad implementation. Diagnose this missing module first:
+Cannot find package '@/components'. Check package.json, tsconfig paths, and
+the latest git diff. Make the smallest change that resolves the import,
+then run the failing command again.
 ```
 
-## Real Usage With an Agent
+![Runcap dashboard rescue notice](docs/assets/dashboard-rescue-notice.png)
 
-Instead of launching an agent directly, plan the work and then wrap narrow missions:
+## Install
 
 ```bash
-node ./bin/aim.mjs plan --fuel 24 --quality high -- "Build a small auth feature and verify it"
-node ./bin/aim.mjs preflight -- codex "Build a full SaaS app with auth, billing, dashboard and deployment"
-node ./bin/aim.mjs run --label codex-small-task -- codex "Fix one small failing check. Run verification. Stop if blocked."
-node ./bin/aim.mjs report
-node ./bin/aim.mjs export
+npm install -g runcap     # exposes `runcap` (and `aim` as a legacy alias)
 ```
 
-On macOS, double-click `Run Agent.command` and paste a command such as:
+Or run from source with `node ./bin/runcap.mjs <command>`.
 
-```text
-codex "Fix one small issue. Run verification. Stop if blocked."
-```
-
-The same pattern works for any terminal command:
+## Core commands
 
 ```bash
-node ./bin/aim.mjs run --label tests -- npm test
-node ./bin/aim.mjs run --label build -- npm run build
+runcap plan --fuel 24 -- "build a small auth feature and verify it"   # range + recommended cap, before you spend
+runcap preflight -- claude "build a full SaaS app"                     # is this prompt too broad?
+runcap run --label fix -- claude "fix one failing check. stop if blocked."  # wrap any agent/command
+runcap report                                                          # human-readable rescue report
+runcap export                                                          # evidence JSON with truth labels
+runcap dashboard                                                       # local cockpit at :8791
+runcap gateway                                                         # cost-tracking proxy with hard budget cap
+runcap fuel set 24                                                     # calibrate a %-only subscription
 ```
 
-## API Cost Gateway
+## The hard cap (gateway)
 
-Mock mode, no external calls:
+Point any OpenAI- or Anthropic-compatible tool at the local gateway. It records real token usage, prices it from a sourced table, and **blocks calls the moment your daily ceiling is hit**.
 
 ```bash
-node ./bin/aim.mjs gateway --mock
+# OpenAI-compatible agents
+OPENAI_API_KEY=sk-... AIM_DAILY_BUDGET_USD=5 runcap gateway
+#   then: OPENAI_BASE_URL=http://127.0.0.1:8792/v1
+
+# Anthropic-native (Claude Code, /v1/messages)
+ANTHROPIC_API_KEY=sk-ant-... AIM_DAILY_BUDGET_USD=5 runcap gateway
+#   then: ANTHROPIC_BASE_URL=http://127.0.0.1:8792/v1
 ```
 
-Real OpenAI-compatible proxy:
+When spend crosses the ceiling, the next call returns `429 budget_guard` instead of money leaving your account. Try it with no key: `runcap gateway --mock`.
 
-```bash
-OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
-```
+## Pricing table
 
-Point compatible tools to:
+Costs are calculated from a sourced multi-provider table — Anthropic (Opus / Sonnet / Haiku) and OpenAI (GPT-5 family + legacy GPT-4), with cache-read and batch discounts handled — labeled with source and verification date. When a model is unknown, Runcap says `unknown_price` rather than guessing.
 
-```text
-OPENAI_BASE_URL=http://127.0.0.1:8792/v1
-OPENAI_API_KEY=local-placeholder
-```
+## Trust model
 
-Optional budget guard:
+Runcap is built not to fake certainty. Every important output carries a truth label:
 
-```bash
-AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
-```
+- `observed` — git diff, exit code, file changes, terminal output;
+- `calculated` — parsed errors, diff hashes, stuck score, cost from the sourced price table;
+- `provider_usage` — token usage returned by the upstream provider;
+- `manual_calibration` — subscription % you entered before/after a run;
+- `unknown` — Runcap cannot honestly know.
 
-## Trust Model
+If it cannot prove something, it says so.
 
-The product is designed not to fake certainty.
+## Pricing (the product, not the tokens)
 
-Every important output is labeled by source:
+| Tier | Price | What you get |
+|---|---|---|
+| **OSS** (MIT, local) | $0 forever | All local runs, cost estimation, hard cap, run wrapping, stuck detection, rescue prompts, local dashboard. Never crippleware. |
+| **Pro** | $19/mo | Cloud sync across machines, hosted dashboard, estimate-vs-actual trends, shareable reports, alerts on cap breach |
+| **Team** | $49/seat/mo | Shared budget pools, org-wide ceilings, per-project rollups, role-based caps |
 
-- `observed`: git diff, exit code, file changes, terminal output;
-- `calculated`: parsed errors, diff hashes, stuck score;
-- `provider_usage`: token usage returned by an upstream model provider;
-- `manual_calibration`: user-visible subscription percentage before/after a mission;
-- `unknown`: the system cannot honestly know.
+The local core is free forever. Only persistence, collaboration, and aggregation are paid — the things that only matter once data leaves your laptop.
 
-If it cannot prove something, it should say so.
+## Current stage
 
-## Current Stage
-
-This is a working local prototype, not a polished SaaS product.
-
-It is ready for:
-
-- evaluating the concept;
-- wrapping real Codex / Claude / Cursor sessions;
-- collecting stuck-agent examples;
-- testing whether rescue prompts actually save time.
-
-It is not yet:
-
-- a hosted cloud platform;
-- a verified live model price catalog;
-- a universal agent observability standard;
-- a replacement for Langfuse, LiteLLM, AgentOps, or other infrastructure tools.
-
-## Why This Exists
-
-Most AI-agent tooling answers:
-
-```text
-What happened?
-```
-
-AI Agent Manager is trying to answer:
-
-```text
-Why is the task not finished, and what is the smallest next step to rescue it?
-```
-
-The thesis:
-
-> AI agents need managers.
+A working local tool, not a hosted SaaS. Ready for: wrapping real Codex / Claude / Cursor sessions, catching stuck agents, and proving rescue prompts save time. Not yet: a hosted cloud platform or a universal observability standard. It is not trying to replace Langfuse or LiteLLM — it does the thing they don't.
 
 ## Documentation
 
 - [Product status](PRODUCT.md)
 - [Quickstart](docs/quickstart.md)
-- [Product plan](docs/product-plan.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Business plan](docs/BUSINESS-PLAN.md)
 - [Integrations](docs/integrations.md)
 - [Trust model](docs/trust-model.md)
-- [Codex test plan](docs/codex-test-plan.md)
-- [External review packet](docs/external-review.md)
+
+---
+
+The thesis: **AI agents need managers.**

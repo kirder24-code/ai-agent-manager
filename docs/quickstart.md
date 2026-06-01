@@ -50,7 +50,7 @@ to start and open the dashboard without typing commands.
 ## 4. Try the Mock Gateway
 
 ```bash
-node ./bin/aim.mjs gateway --mock
+runcap gateway --mock
 ```
 
 In another terminal:
@@ -64,7 +64,7 @@ curl -s -X POST http://127.0.0.1:8792/v1/chat/completions \
 Then check:
 
 ```bash
-node ./bin/aim.mjs status
+runcap status
 ```
 
 You should see gateway calls, tokens, and estimated spend.
@@ -72,7 +72,7 @@ You should see gateway calls, tokens, and estimated spend.
 ## 5. Export Evidence
 
 ```bash
-node ./bin/aim.mjs export
+runcap export
 ```
 
 This writes an `export.json` next to the mission report. Use it to inspect what the system actually knows.
@@ -82,8 +82,8 @@ This writes an `export.json` next to the mission report. Use it to inspect what 
 Wrap the command instead of launching it directly:
 
 ```bash
-node ./bin/aim.mjs run --label real-codex-test -- codex "Fix one small bug. Run tests. Stop if blocked."
-node ./bin/aim.mjs run --label real-claude-test -- claude "Inspect this repo and fix one failing test."
+runcap run --label real-codex-test -- codex "Fix one small bug. Run tests. Stop if blocked."
+runcap run --label real-claude-test -- claude "Inspect this repo and fix one failing test."
 ```
 
 The first real validation target is not perfection. It is whether the report helps you continue when the agent gets stuck.

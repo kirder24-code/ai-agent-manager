@@ -1,3 +1,4 @@
 .aim-control/
+.runcap/
 node_modules/
 *.log

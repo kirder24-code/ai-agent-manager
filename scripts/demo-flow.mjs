@@ -3,12 +3,12 @@ import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
 
-await run(["node", "./bin/aim.mjs", "setup"]);
-await run(["node", "./bin/aim.mjs", "fuel", "set", "24"]);
-await run(["node", "./bin/aim.mjs", "preflight", "--", "claude", "build the full mobile app with auth payments and production deploy"]);
-await run(["node", "./bin/aim.mjs", "run", "--label", "demo-broken-build", "--fuel-before", "24", "--", "npm", "--prefix", "examples/broken-ts-app", "run", "build"]);
-await run(["node", "./bin/aim.mjs", "status"]);
-await run(["node", "./bin/aim.mjs", "report"]);
+await run(["node", "./bin/runcap.mjs", "setup"]);
+await run(["node", "./bin/runcap.mjs", "fuel", "set", "24"]);
+await run(["node", "./bin/runcap.mjs", "preflight", "--", "claude", "build the full mobile app with auth payments and production deploy"]);
+await run(["node", "./bin/runcap.mjs", "run", "--label", "demo-broken-build", "--fuel-before", "24", "--", "npm", "--prefix", "examples/broken-ts-app", "run", "build"]);
+await run(["node", "./bin/runcap.mjs", "status"]);
+await run(["node", "./bin/runcap.mjs", "report"]);
 
 function run(args) {
   return new Promise((resolve, reject) => {

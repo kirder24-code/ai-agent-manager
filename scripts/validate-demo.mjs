@@ -5,12 +5,12 @@ import process from "node:process";
 
 const root = path.resolve(import.meta.dirname, "..");
 
-const preflight = await run(["node", "./bin/aim.mjs", "preflight", "--", "claude", "build the full mobile app with production deploy"]);
+const preflight = await run(["node", "./bin/runcap.mjs", "preflight", "--", "claude", "build the full mobile app with production deploy"]);
 if (!preflight.includes("Scope risk: high")) {
   throw new Error(`Expected high scope risk, got:\n${preflight}`);
 }
 
-const output = await run(["node", "./bin/aim.mjs", "run", "--label", "validation", "--", "npm", "--prefix", "examples/broken-ts-app", "run", "build"]);
+const output = await run(["node", "./bin/runcap.mjs", "run", "--label", "validation", "--", "npm", "--prefix", "examples/broken-ts-app", "run", "build"]);
 if (!output.includes("Status: stuck")) {
   throw new Error(`Expected stuck status, got:\n${output}`);
 }
@@ -18,10 +18,10 @@ if (!output.includes("Parsed errors: 1")) {
   throw new Error(`Expected one parsed error, got:\n${output}`);
 }
 
-const id = output.match(/AIM mission: ([^\n]+)/)?.[1]?.trim();
+const id = output.match(/Runcap mission: ([^\n]+)/)?.[1]?.trim();
 if (!id) throw new Error(`Could not find mission id in:\n${output}`);
 
-const report = await readFile(path.join(root, ".aim-control", "missions", id, "report.md"), "utf8");
+const report = await readFile(path.join(root, ".runcap", "missions", id, "report.md"), "utf8");
 const checks = [
   "Cannot find package '@/components'",
   "Source file:",

@@ -1,4 +1,4 @@
-# AI Agent Manager
+# Runcap
 
 ## Status
 
@@ -6,7 +6,7 @@ External local prototype ready for real-agent testing. The current build is a pr
 
 ## What It Does
 
-AI Agent Manager is an AI efficiency control layer. It sits between a person or company and their AI agents, then helps plan, route, monitor, rescue, and learn from AI work.
+Runcap is an AI efficiency control layer. It sits between a person or company and their AI agents, then helps plan, route, monitor, rescue, and learn from AI work.
 
 The commercial promise is:
 
@@ -54,15 +54,15 @@ Run Agent.command
 Real agent wrapping:
 
 ```bash
-node ./bin/aim.mjs run --label codex-test -- codex "Fix one failing test. Stop if blocked."
-node ./bin/aim.mjs run --label claude-test -- claude "Implement one narrow feature and run verification."
+runcap run --label codex-test -- codex "Fix one failing test. Stop if blocked."
+runcap run --label claude-test -- claude "Implement one narrow feature and run verification."
 ```
 
 Gateway:
 
 ```bash
-node ./bin/aim.mjs gateway --mock
-AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
+runcap gateway --mock
+AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... runcap gateway
 ```
 
 ## Acceptance
@@ -97,12 +97,12 @@ npm run acceptance
 Use `docs/codex-test-plan.md` and run a real Codex task through:
 
 ```bash
-node ./bin/aim.mjs run --label real-codex-test -- codex "<one narrow coding task>"
+runcap run --label real-codex-test -- codex "<one narrow coding task>"
 ```
 
 Then inspect:
 
 ```bash
-node ./bin/aim.mjs report
-node ./bin/aim.mjs export
+runcap report
+runcap export
 ```

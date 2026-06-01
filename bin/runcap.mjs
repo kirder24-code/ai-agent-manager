@@ -23,32 +23,34 @@ const args = process.argv.slice(2);
 const command = args[0] ?? "help";
 
 function usage() {
-  console.log(`AI Agent Manager Lab
+  console.log(`Runcap — cap every agent run before it starts
 
 Usage:
-  aim run [--label name] [--fuel-before 24] -- <command...>
-  aim plan [--fuel 24] [--quality high|balanced|cheap] -- <goal...>
-  aim plans
-  aim preflight -- <command or prompt...>
-  aim status
-  aim list
-  aim report [mission-id]
-  aim rescue [mission-id]
-  aim export [mission-id]
-  aim templates
-  aim dashboard [--port 8791]
-  aim gateway [--port 8792] [--mock]
-  aim setup
-  aim doctor
-  aim fuel set <percent>
-  aim fuel calibrate <mission-id> <after-percent>
+  runcap run [--label name] [--fuel-before 24] -- <command...>
+  runcap plan [--fuel 24] [--quality high|balanced|cheap] -- <goal...>
+  runcap plans
+  runcap preflight -- <command or prompt...>
+  runcap status
+  runcap list
+  runcap report [mission-id]
+  runcap rescue [mission-id]
+  runcap export [mission-id]
+  runcap templates
+  runcap dashboard [--port 8791]
+  runcap gateway [--port 8792] [--mock]
+  runcap setup
+  runcap doctor
+  runcap fuel set <percent>
+  runcap fuel calibrate <mission-id> <after-percent>
 
 Examples:
-  aim run --label auth-fix -- claude "fix the auth bug"
-  aim plan --fuel 24 -- "build a mobile app MVP with auth and deployment"
-  aim run -- npm test
-  aim report
-  aim fuel set 24
+  runcap run --label auth-fix -- claude "fix the auth bug"
+  runcap plan --fuel 24 -- "build a mobile app MVP with auth and deployment"
+  runcap run -- npm test
+  runcap report
+  runcap fuel set 24
+
+(\`aim\` works as a legacy alias for every command.)
 `);
 }
 
@@ -102,7 +104,7 @@ try {
     });
     console.log([
       "",
-      `AIM plan: ${plan.id}`,
+      `Runcap plan: ${plan.id}`,
       `Goal: ${plan.goal}`,
       `Budget risk: ${plan.budget.risk}`,
       `Expected waste reduction: ${plan.budget.expectedWasteReduction}`,

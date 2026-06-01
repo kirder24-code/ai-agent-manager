@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 TASK=$(/usr/bin/osascript <<'APPLESCRIPT'
 try
-  set dialogResult to display dialog "Paste the agent command you want AI Agent Manager to run." default answer "codex \"Inspect this project and improve one small thing. Run npm run check. Stop if blocked.\"" buttons {"Cancel", "Run"} default button "Run"
+  set dialogResult to display dialog "Paste the agent command you want Runcap to run." default answer "codex \"Inspect this project and improve one small thing. Run npm run check. Stop if blocked.\"" buttons {"Cancel", "Run"} default button "Run"
   text returned of dialogResult
 on error
   return ""
@@ -24,16 +24,16 @@ echo "Running mission: ${LABEL}"
 echo "Command: ${TASK}"
 echo ""
 
-node ./bin/aim.mjs run --label "${LABEL}" -- zsh -lc "${TASK}"
+node ./bin/runcap.mjs run --label "${LABEL}" -- zsh -lc "${TASK}"
 
 echo ""
-node ./bin/aim.mjs report
+node ./bin/runcap.mjs report
 
 PORT="${AIM_DASHBOARD_PORT:-8791}"
 URL="http://127.0.0.1:${PORT}"
 
 if ! lsof -ti tcp:"${PORT}" >/dev/null 2>&1; then
-  node ./bin/aim.mjs dashboard --port "${PORT}" &
+  node ./bin/runcap.mjs dashboard --port "${PORT}" &
   sleep 1
 fi
 

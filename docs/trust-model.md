@@ -1,6 +1,6 @@
 # Trust Model
 
-AI Agent Manager must not become another confident AI system that invents progress.
+Runcap must not become another confident AI system that invents progress.
 
 ## Truth Labels
 

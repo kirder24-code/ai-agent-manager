@@ -56,11 +56,11 @@ On 30 real coding-agent sessions:
 ## Current Prototype Commands
 
 ```bash
-node ./bin/aim.mjs preflight -- claude "build a full app"
-node ./bin/aim.mjs run --label auth-fix -- claude "fix auth"
-node ./bin/aim.mjs report
-node ./bin/aim.mjs dashboard
-OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
+runcap preflight -- claude "build a full app"
+runcap run --label auth-fix -- claude "fix auth"
+runcap report
+runcap dashboard
+OPENAI_API_KEY=sk-... runcap gateway
 ```
 
 The dashboard is local-only and reads `.aim-control/missions`. It is intentionally not a cloud product yet because the first trust problem is evidence quality, not hosting.

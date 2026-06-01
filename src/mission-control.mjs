@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-const STORE_DIR = ".aim-control";
+const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
 const PLANS_DIR = path.join(STORE_DIR, "plans");
 const FUEL_FILE = path.join(STORE_DIR, "fuel.json");
@@ -129,7 +129,7 @@ export async function exportSnapshot(id) {
   const fuel = await readFuel();
   const exportObject = {
     exportedAt: new Date().toISOString(),
-    product: "AI Agent Manager Lab",
+    product: "Runcap",
     truthModel: {
       progressProof: "observed_from_git_and_command_result",
       terminalErrors: "calculated_from_terminal_logs",
@@ -158,27 +158,27 @@ export async function exportSnapshot(id) {
 }
 
 export function templates() {
-  return `AI Agent Manager Templates
+  return `Runcap Templates
 
 1. Coding feature with proof
-   node ./bin/aim.mjs preflight -- claude "Implement <one feature>. Acceptance: <one visible result>. Verify with <command>."
-   node ./bin/aim.mjs run --label feature -- claude "Implement <one feature>. Change only relevant files. Run <command>. Stop and report if blocked."
+   runcap preflight -- claude "Implement <one feature>. Acceptance: <one visible result>. Verify with <command>."
+   runcap run --label feature -- claude "Implement <one feature>. Change only relevant files. Run <command>. Stop and report if blocked."
 
 2. Stuck rescue pass
-   node ./bin/aim.mjs run --label rescue -- claude "Do not write broad code. Use the previous AIM report. Diagnose the failure, map it to files/config, make the smallest fix, then run verification."
+   runcap run --label rescue -- claude "Do not write broad code. Use the previous Runcap report. Diagnose the failure, map it to files/config, make the smallest fix, then run verification."
 
 3. Explorer before expensive coding
-   node ./bin/aim.mjs run --label explorer -- claude "Do not edit files. Inspect the project and return the smallest implementation plan with exact files and verification command."
+   runcap run --label explorer -- claude "Do not edit files. Inspect the project and return the smallest implementation plan with exact files and verification command."
 
 4. Subscription fuel discipline
-   node ./bin/aim.mjs fuel set 24
-   node ./bin/aim.mjs run --label focused-slice --fuel-before 24 -- claude "Build one vertical slice only. Stop after verification."
-   node ./bin/aim.mjs fuel calibrate <mission-id> <after-percent>
+   runcap fuel set 24
+   runcap run --label focused-slice --fuel-before 24 -- claude "Build one vertical slice only. Stop after verification."
+   runcap fuel calibrate <mission-id> <after-percent>
 
 5. API cost gateway
-   node ./bin/aim.mjs gateway --mock
+   runcap gateway --mock
    # or
-   AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... node ./bin/aim.mjs gateway
+   AIM_DAILY_BUDGET_USD=5 OPENAI_API_KEY=sk-... runcap gateway
 `;
 }
 
@@ -239,7 +239,7 @@ export async function listMissions() {
 export async function setupProject() {
   await ensureStore();
   const envExample = [
-    "# AI Agent Manager Lab",
+    "# Runcap",
     "# For real gateway mode:",
     "OPENAI_API_KEY=",
     "AIM_UPSTREAM_BASE_URL=https://api.openai.com/v1",
@@ -254,14 +254,14 @@ export async function setupProject() {
     await writeFile(ENV_EXAMPLE_FILE, `${envExample}\n`);
   }
   return [
-    "AI Agent Manager setup complete.",
+    "Runcap setup complete.",
     `Store: ${STORE_DIR}`,
     `Example env: ${ENV_EXAMPLE_FILE}`,
     "",
     "Try:",
-    "  node ./bin/aim.mjs preflight -- claude \"build the full mobile app\"",
-    "  node ./bin/aim.mjs run --label demo -- npm --prefix examples/broken-ts-app run build",
-    "  node ./bin/aim.mjs gateway --mock"
+    "  runcap preflight -- claude \"build the full mobile app\"",
+    "  runcap run --label demo -- npm --prefix examples/broken-ts-app run build",
+    "  runcap gateway --mock"
   ].join("\n");
 }
 
@@ -282,13 +282,13 @@ export async function doctor() {
     ["Gateway events recorded", gateway.callCount > 0, `${gateway.callCount} calls`]
   ];
   return [
-    "AI Agent Manager Doctor",
+    "Runcap Doctor",
     ...checks.map(([name, ok, detail]) => `${ok ? "OK" : "WARN"}  ${name}: ${detail}`),
     "",
     "Recommended next step:",
     missions.length === 0
-      ? "  node ./bin/aim.mjs run --label first-check -- npm test"
-      : "  node ./bin/aim.mjs dashboard"
+      ? "  runcap run --label first-check -- npm test"
+      : "  runcap dashboard"
   ].join("\n");
 }
 
@@ -331,7 +331,7 @@ export async function startDashboard({ port = 8791 } = {}) {
     }
   });
   await listenLocal(server, port, "dashboard");
-  console.log(`AI Agent Manager dashboard: http://127.0.0.1:${port}`);
+  console.log(`Runcap dashboard: http://127.0.0.1:${port}`);
   console.log("Press Ctrl+C to stop.");
 }
 
@@ -353,17 +353,27 @@ async function listenLocal(server, port, label) {
 export async function startGateway({ port = 8792, mock = false } = {}) {
   await ensureStore();
   const gatewayMode = mock || process.env.AIM_GATEWAY_MODE === "mock" ? "mock" : "proxy";
-  const upstreamBaseUrl = process.env.AIM_UPSTREAM_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-  const upstreamApiKey = process.env.AIM_UPSTREAM_API_KEY ?? process.env.OPENAI_API_KEY;
-  if (gatewayMode !== "mock" && !upstreamApiKey) {
-    throw new Error("Missing AIM_UPSTREAM_API_KEY or OPENAI_API_KEY. Gateway cannot proxy model calls without an upstream key.");
+  const openaiKey = process.env.AIM_UPSTREAM_API_KEY ?? process.env.OPENAI_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openaiBaseUrl = process.env.AIM_UPSTREAM_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+  const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1";
+  const anthropicVersion = process.env.ANTHROPIC_VERSION ?? "2023-06-01";
+  if (gatewayMode !== "mock" && !openaiKey && !anthropicKey) {
+    throw new Error("Missing upstream key. Set OPENAI_API_KEY (for /v1/chat/completions) and/or ANTHROPIC_API_KEY (for /v1/messages). The gateway cannot proxy without at least one.");
   }
   const server = http.createServer(async (request, response) => {
     const started = Date.now();
     try {
       const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
       if (request.method === "GET" && url.pathname === "/health") {
-        sendJson(response, { ok: true, upstreamBaseUrl });
+        sendJson(response, {
+          ok: true,
+          mode: gatewayMode,
+          openaiUpstream: openaiBaseUrl,
+          anthropicUpstream: anthropicBaseUrl,
+          openaiKey: Boolean(openaiKey),
+          anthropicKey: Boolean(anthropicKey)
+        });
         return;
       }
       if (request.method !== "POST" || !url.pathname.startsWith("/v1/")) {
@@ -393,7 +403,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
         return;
       }
       if (gatewayMode === "mock") {
-        const responseBody = mockChatCompletion(requestBody);
+        const responseBody = mockCompletion(requestBody, url.pathname);
         const responseText = JSON.stringify(responseBody);
         send(response, 200, responseText, "application/json; charset=utf-8");
         await appendGatewayEvent({
@@ -409,13 +419,30 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
         });
         return;
       }
-      const upstreamUrl = `${upstreamBaseUrl.replace(/\/$/, "")}${url.pathname}`;
+      const isAnthropic = url.pathname.startsWith("/v1/messages");
+      const upstreamBase = isAnthropic ? anthropicBaseUrl : openaiBaseUrl;
+      const upstreamKey = isAnthropic ? anthropicKey : openaiKey;
+      if (!upstreamKey) {
+        const missing = isAnthropic ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
+        send(response, 400, `Gateway has no ${missing} set for ${url.pathname}.`, "text/plain; charset=utf-8");
+        return;
+      }
+      const headers = isAnthropic
+        ? {
+            "x-api-key": upstreamKey,
+            "anthropic-version": anthropicVersion,
+            "content-type": request.headers["content-type"] ?? "application/json"
+          }
+        : {
+            "authorization": `Bearer ${upstreamKey}`,
+            "content-type": request.headers["content-type"] ?? "application/json"
+          };
+      // Anthropic base URLs already include /v1; avoid doubling it.
+      const pathForUpstream = isAnthropic ? url.pathname.replace(/^\/v1/, "") : url.pathname;
+      const upstreamUrl = `${upstreamBase.replace(/\/$/, "")}${pathForUpstream}`;
       const upstreamResponse = await fetch(upstreamUrl, {
         method: "POST",
-        headers: {
-          "authorization": `Bearer ${upstreamApiKey}`,
-          "content-type": request.headers["content-type"] ?? "application/json"
-        },
+        headers,
         body: bodyText
       });
       const responseText = await upstreamResponse.text();
@@ -453,9 +480,14 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
     }
   });
   await listenLocal(server, port, "gateway");
-  console.log(`AI Agent Manager gateway: http://127.0.0.1:${port}/v1`);
+  console.log(`Runcap gateway: http://127.0.0.1:${port}/v1`);
   console.log(`Mode: ${gatewayMode}`);
-  console.log(`Upstream: ${gatewayMode === "mock" ? "mock local responder" : upstreamBaseUrl}`);
+  if (gatewayMode === "mock") {
+    console.log("Upstream: mock local responder");
+  } else {
+    console.log(`Upstream (OpenAI /v1/chat/completions): ${openaiKey ? openaiBaseUrl : "no key set"}`);
+    console.log(`Upstream (Anthropic /v1/messages): ${anthropicKey ? anthropicBaseUrl : "no key set"}`);
+  }
   console.log("Press Ctrl+C to stop.");
 }
 
@@ -663,7 +695,7 @@ function commandTemplatesForPlan(goal, missions) {
   const quotedGoal = goal.replace(/"/g, '\\"');
   return missions.map((mission, index) => ({
     mission: mission.name,
-    command: `node ./bin/aim.mjs run --label plan-${index + 1} -- codex "${mission.instruction} Goal: ${quotedGoal} Proof required: ${mission.proof}"`
+    command: `runcap run --label plan-${index + 1} -- codex "${mission.instruction} Goal: ${quotedGoal} Proof required: ${mission.proof}"`
   }));
 }
 
@@ -772,7 +804,7 @@ function cleanDiffNameStatus(text) {
   return (text || "")
     .split("\n")
     .filter(Boolean)
-    .filter((line) => !line.includes(".aim-control/"));
+    .filter((line) => !line.includes(".runcap/") && !line.includes(".aim-control/"));
 }
 
 function buildPreflight(prompt, snapshot) {
@@ -1060,16 +1092,34 @@ function readBudget() {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-function mockChatCompletion(requestBody) {
-  const content = "Mock response from AI Agent Manager gateway. This call was recorded with provider-like usage for demo and budget testing.";
+function mockCompletion(requestBody, pathname = "/v1/chat/completions") {
+  const content = "Mock response from Runcap gateway. This call was recorded with provider-like usage for demo and budget testing.";
   const promptText = JSON.stringify(requestBody.messages ?? requestBody.input ?? requestBody.prompt ?? "");
   const promptTokens = Math.max(1, Math.ceil(promptText.length / 4));
   const completionTokens = Math.max(12, Math.ceil(content.length / 4));
+
+  if (pathname.startsWith("/v1/messages")) {
+    // Anthropic Messages API shape.
+    return {
+      id: `msg-mock-${Date.now()}`,
+      type: "message",
+      role: "assistant",
+      model: requestBody.model ?? "claude-sonnet-4-6",
+      content: [{ type: "text", text: content }],
+      stop_reason: "end_turn",
+      usage: {
+        input_tokens: promptTokens,
+        output_tokens: completionTokens,
+        cache_read_input_tokens: 0
+      }
+    };
+  }
+
   return {
     id: `chatcmpl-mock-${Date.now()}`,
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
-    model: requestBody.model ?? "gpt-4o-mini",
+    model: requestBody.model ?? "gpt-5.4-mini",
     choices: [
       {
         index: 0,
@@ -1085,6 +1135,32 @@ function mockChatCompletion(requestBody) {
   };
 }
 
+// Sourced multi-provider price table.
+// Sources: claude.com/pricing (Anthropic API) and developers.openai.com/api/docs/pricing.
+// Verified 2026-06-01. Prices are USD per 1,000,000 tokens.
+// cacheReadPerMillion = cost of a cached-read input token (Anthropic ~10% of input, OpenAI ~10% of input).
+// Batch APIs run at ~50% of standard rates for both providers.
+const PRICE_TABLE_SOURCE = "official_provider_pricing";
+const PRICE_TABLE_VERIFIED = "2026-06-01";
+const BATCH_DISCOUNT = 0.5;
+
+const MODEL_PRICES = [
+  // Anthropic (claude.com/pricing)
+  { match: ["claude-opus", "opus-4"], inputPerMillion: 5, outputPerMillion: 25, cacheReadPerMillion: 0.5, provider: "anthropic" },
+  { match: ["claude-sonnet", "sonnet-4"], inputPerMillion: 3, outputPerMillion: 15, cacheReadPerMillion: 0.3, provider: "anthropic" },
+  { match: ["claude-haiku", "haiku-4"], inputPerMillion: 1, outputPerMillion: 5, cacheReadPerMillion: 0.1, provider: "anthropic" },
+  // OpenAI (developers.openai.com/api/docs/pricing)
+  { match: ["gpt-5.5"], inputPerMillion: 5, outputPerMillion: 30, cacheReadPerMillion: 0.5, provider: "openai" },
+  { match: ["gpt-5.4-nano"], inputPerMillion: 0.2, outputPerMillion: 1.25, cacheReadPerMillion: 0.02, provider: "openai" },
+  { match: ["gpt-5.4-mini", "gpt-5-mini"], inputPerMillion: 0.75, outputPerMillion: 4.5, cacheReadPerMillion: 0.075, provider: "openai" },
+  { match: ["gpt-5.4", "gpt-5"], inputPerMillion: 2.5, outputPerMillion: 15, cacheReadPerMillion: 0.25, provider: "openai" },
+  // Legacy OpenAI (kept for back-compat with older agents)
+  { match: ["gpt-4.1-mini"], inputPerMillion: 0.4, outputPerMillion: 1.6, cacheReadPerMillion: 0.1, provider: "openai" },
+  { match: ["gpt-4.1"], inputPerMillion: 2, outputPerMillion: 8, cacheReadPerMillion: 0.5, provider: "openai" },
+  { match: ["gpt-4o-mini"], inputPerMillion: 0.15, outputPerMillion: 0.6, cacheReadPerMillion: 0.075, provider: "openai" },
+  { match: ["gpt-4o"], inputPerMillion: 2.5, outputPerMillion: 10, cacheReadPerMillion: 1.25, provider: "openai" }
+];
+
 function estimateApiCost(usage, model) {
   if (!usage) return null;
   const pricing = modelPricing(model);
@@ -1092,25 +1168,58 @@ function estimateApiCost(usage, model) {
     return {
       estimatedUsd: null,
       truth: "unknown_price",
-      note: "Provider returned usage, but this prototype has no verified price table for the model."
+      note: `No verified price entry for model "${model}". Cost is honestly unknown rather than guessed.`
     };
   }
-  const input = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
+  // Token fields differ by provider:
+  //   OpenAI: prompt_tokens / completion_tokens (+ prompt_tokens_details.cached_tokens)
+  //   Anthropic: input_tokens / output_tokens (+ cache_read_input_tokens)
+  const cachedInput = Number(
+    usage.cache_read_input_tokens ??
+    usage.prompt_tokens_details?.cached_tokens ??
+    0
+  );
+  const rawInput = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0);
+  const freshInput = Math.max(0, rawInput - cachedInput);
   const output = Number(usage.completion_tokens ?? usage.output_tokens ?? 0);
-  const estimatedUsd = (input / 1_000_000) * pricing.inputPerMillion + (output / 1_000_000) * pricing.outputPerMillion;
+
+  const inputRate = pricing.batch ? pricing.inputPerMillion * BATCH_DISCOUNT : pricing.inputPerMillion;
+  const outputRate = pricing.batch ? pricing.outputPerMillion * BATCH_DISCOUNT : pricing.outputPerMillion;
+  const cacheRate = pricing.batch ? pricing.cacheReadPerMillion * BATCH_DISCOUNT : pricing.cacheReadPerMillion;
+
+  const estimatedUsd =
+    (freshInput / 1_000_000) * inputRate +
+    (cachedInput / 1_000_000) * cacheRate +
+    (output / 1_000_000) * outputRate;
+
   return {
     estimatedUsd: Number(estimatedUsd.toFixed(6)),
-    truth: "calculated_from_static_price_table",
-    pricing
+    truth: "calculated_from_sourced_price_table",
+    pricing: {
+      ...pricing,
+      source: PRICE_TABLE_SOURCE,
+      verified: PRICE_TABLE_VERIFIED,
+      cachedInputTokens: cachedInput
+    }
   };
 }
 
 function modelPricing(model = "") {
   const name = String(model).toLowerCase();
-  if (name.includes("gpt-4.1-mini")) return { inputPerMillion: 0.4, outputPerMillion: 1.6, source: "static_prototype_table" };
-  if (name.includes("gpt-4.1")) return { inputPerMillion: 2, outputPerMillion: 8, source: "static_prototype_table" };
-  if (name.includes("gpt-4o-mini")) return { inputPerMillion: 0.15, outputPerMillion: 0.6, source: "static_prototype_table" };
-  if (name.includes("gpt-4o")) return { inputPerMillion: 2.5, outputPerMillion: 10, source: "static_prototype_table" };
+  const batch = name.includes("batch");
+  for (const entry of MODEL_PRICES) {
+    if (entry.match.some((m) => name.includes(m))) {
+      return {
+        inputPerMillion: entry.inputPerMillion,
+        outputPerMillion: entry.outputPerMillion,
+        cacheReadPerMillion: entry.cacheReadPerMillion,
+        provider: entry.provider,
+        batch,
+        source: PRICE_TABLE_SOURCE,
+        verified: PRICE_TABLE_VERIFIED
+      };
+    }
+  }
   return null;
 }
 
@@ -1126,7 +1235,7 @@ function readRequestBody(request) {
 function shortSummary(mission) {
   return [
     "",
-    `AIM mission: ${mission.id}`,
+    `Runcap mission: ${mission.id}`,
     `Status: ${mission.stuck.status} (${mission.stuck.confidence} confidence)`,
     `Exit code: ${mission.exitCode}`,
     `Changed files: ${mission.diffEvidence.changedFiles.length}`,
@@ -1368,7 +1477,7 @@ function renderDashboardHtml() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Agent Manager</title>
+  <title>Runcap</title>
   <style>
     :root { color-scheme: dark; --bg:#080d13; --panel:#111821; --panel2:#17212d; --soft:#202b38; --line:#2c3948; --text:#f8fafc; --muted:#a8b3c2; --good:#52d789; --warn:#ffd166; --bad:#ff6868; --accent:#63d5ff; --violet:#b8a0ff; }
     * { box-sizing: border-box; }
@@ -1451,7 +1560,7 @@ function renderDashboardHtml() {
       <div class="brand">
         <div class="mark">AI</div>
         <div>
-          <h1>AI Agent Manager</h1>
+          <h1>Runcap</h1>
           <div class="tagline">Plan AI work. Route models. Prove progress. Stop waste.</div>
         </div>
       </div>
@@ -1564,7 +1673,7 @@ function renderDashboardHtml() {
         '</div>' +
         '<details open><summary>Copyable agent commands</summary><pre>' + esc(plan.commandTemplates.map((item) => item.command).join("\\n\\n")) + '</pre></details>' +
         '<details><summary>Plan truth labels</summary><pre>' + esc(JSON.stringify(plan.truth, null, 2)) + '</pre></details>';
-      window.lastPlanText = "AI Agent Manager plan\\nPlan: " + plan.id + "\\nGoal: " + plan.goal + "\\nBudget risk: " + plan.budget.risk + "\\nExpected waste reduction: " + plan.budget.expectedWasteReduction + "\\nPlanning model: " + plan.routing.planningTier + "\\nExecution model: " + plan.routing.executionTier + "\\nProof: " + plan.quality.proof + "\\nStop rule: " + plan.stopRule + "\\n\\nCommands:\\n" + plan.commandTemplates.map((item) => item.command).join("\\n\\n");
+      window.lastPlanText = "Runcap plan\\nPlan: " + plan.id + "\\nGoal: " + plan.goal + "\\nBudget risk: " + plan.budget.risk + "\\nExpected waste reduction: " + plan.budget.expectedWasteReduction + "\\nPlanning model: " + plan.routing.planningTier + "\\nExecution model: " + plan.routing.executionTier + "\\nProof: " + plan.quality.proof + "\\nStop rule: " + plan.stopRule + "\\n\\nCommands:\\n" + plan.commandTemplates.map((item) => item.command).join("\\n\\n");
     }
     async function showPlan(id) {
       state.selectedPlan = id;

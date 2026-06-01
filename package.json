@@ -4,6 +4,35 @@
   "description": "Cap every agent run before it starts: estimate cost, set a hard ceiling that stops the run, rescue stuck agents. Local, MIT, nothing uploaded.",
   "license": "MIT",
   "type": "module",
+  "author": "Kirill D. <kirill@launchsoloai.com> (https://launchsoloai.com)",
+  "homepage": "https://launchsoloai.com/runcap",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kirder24-code/ai-agent-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kirder24-code/ai-agent-manager/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "coding-agent",
+    "cost",
+    "budget",
+    "claude",
+    "openai",
+    "gateway",
+    "cli",
+    "llm",
+    "token-cost"
+  ],
+  "files": [
+    "bin/",
+    "src/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
   "bin": {
     "runcap": "./bin/runcap.mjs",
     "aim": "./bin/runcap.mjs"

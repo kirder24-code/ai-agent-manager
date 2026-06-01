@@ -11,6 +11,13 @@ await mustPass("unit validation", ["npm", "test"], (out) => out.includes("Valida
 await mustPass("doctor", ["npm", "run", "doctor"], (out) => out.includes("AI Agent Manager Doctor"));
 await mustPass("templates", ["node", "./bin/aim.mjs", "templates"], (out) => out.includes("Coding feature with proof"));
 await mustPass("preflight", ["node", "./bin/aim.mjs", "preflight", "--", "claude", "build the full mobile app with production deploy"], (out) => out.includes("Scope risk: high"));
+const planOutput = await run(["node", "./bin/aim.mjs", "plan", "--fuel", "24", "--quality", "high", "--", "build a mobile app MVP with auth database dashboard and deployment"]);
+if (!planOutput.includes("Budget risk: High")) fail("plan risk", planOutput);
+const planId = planOutput.match(/AIM plan: ([^\n]+)/)?.[1]?.trim();
+if (!planId) fail("plan id", planOutput);
+const planJson = JSON.parse(await readFile(path.join(root, ".aim-control", "plans", planId, "plan.json"), "utf8"));
+if (!planJson.commandTemplates?.[0]?.command) fail("plan command templates", JSON.stringify(planJson, null, 2));
+checks.push(["plan", true]);
 
 const demo = await run(["node", "./bin/aim.mjs", "run", "--label", "acceptance", "--fuel-before", "24", "--", "npm", "--prefix", "examples/broken-ts-app", "run", "build"]);
 if (!demo.includes("Status: stuck")) fail("demo run", demo);

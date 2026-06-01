@@ -87,11 +87,19 @@ http://127.0.0.1:8791
 
 The included demo intentionally runs a broken TypeScript project so the manager can show a stuck run, the likely cause, and a rescue prompt.
 
-## Real Usage With an Agent
-
-Instead of launching an agent directly, wrap it:
+Create a saved AI work plan before spending agent budget:
 
 ```bash
+node ./bin/aim.mjs plan --fuel 24 --quality high -- "Build a mobile app MVP with login, database, dashboard and deployment"
+node ./bin/aim.mjs plans
+```
+
+## Real Usage With an Agent
+
+Instead of launching an agent directly, plan the work and then wrap narrow missions:
+
+```bash
+node ./bin/aim.mjs plan --fuel 24 --quality high -- "Build a small auth feature and verify it"
 node ./bin/aim.mjs preflight -- codex "Build a full SaaS app with auth, billing, dashboard and deployment"
 node ./bin/aim.mjs run --label codex-small-task -- codex "Fix one small failing check. Run verification. Stop if blocked."
 node ./bin/aim.mjs report

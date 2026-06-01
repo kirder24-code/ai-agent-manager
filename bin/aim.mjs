@@ -6,6 +6,8 @@ import {
   exportSnapshot,
   latestMissionId,
   listMissions,
+  listPlans,
+  planMission,
   preflightMission,
   recordFuel,
   renderReport,
@@ -25,6 +27,8 @@ function usage() {
 
 Usage:
   aim run [--label name] [--fuel-before 24] -- <command...>
+  aim plan [--fuel 24] [--quality high|balanced|cheap] -- <goal...>
+  aim plans
   aim preflight -- <command or prompt...>
   aim status
   aim list
@@ -41,6 +45,7 @@ Usage:
 
 Examples:
   aim run --label auth-fix -- claude "fix the auth bug"
+  aim plan --fuel 24 -- "build a mobile app MVP with auth and deployment"
   aim run -- npm test
   aim report
   aim fuel set 24
@@ -81,6 +86,35 @@ try {
       throw new Error("Missing command or prompt after `aim preflight --`.");
     }
     console.log(await preflightMission(childArgs));
+  } else if (command === "plan") {
+    const planArgs = args.slice(1);
+    const fuelPercent = takeOption(planArgs, "--fuel");
+    const quality = takeOption(planArgs, "--quality") ?? "high";
+    const separator = planArgs.indexOf("--");
+    const goalArgs = separator === -1 ? planArgs : planArgs.slice(separator + 1);
+    const goal = goalArgs.join(" ").trim();
+    if (!goal) {
+      throw new Error("Missing goal after `aim plan --`.");
+    }
+    const plan = await planMission(goal, {
+      quality,
+      fuelPercent: fuelPercent === undefined ? undefined : Number(fuelPercent)
+    });
+    console.log([
+      "",
+      `AIM plan: ${plan.id}`,
+      `Goal: ${plan.goal}`,
+      `Budget risk: ${plan.budget.risk}`,
+      `Expected waste reduction: ${plan.budget.expectedWasteReduction}`,
+      `Planning model: ${plan.routing.planningTier}`,
+      `Execution model: ${plan.routing.executionTier}`,
+      `Proof: ${plan.quality.proof}`,
+      `Stop rule: ${plan.stopRule}`,
+      `Report: .aim-control/plans/${plan.id}/plan.md`,
+      ""
+    ].join("\n"));
+  } else if (command === "plans") {
+    console.log(await listPlans());
   } else if (command === "status") {
     console.log(await showStatus());
   } else if (command === "list") {

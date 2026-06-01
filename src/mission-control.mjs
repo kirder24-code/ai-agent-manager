@@ -8,6 +8,7 @@ import process from "node:process";
 
 const STORE_DIR = ".aim-control";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
+const PLANS_DIR = path.join(STORE_DIR, "plans");
 const FUEL_FILE = path.join(STORE_DIR, "fuel.json");
 const GATEWAY_EVENTS_FILE = path.join(STORE_DIR, "gateway-events.jsonl");
 const ENV_EXAMPLE_FILE = ".env.example";
@@ -189,6 +190,38 @@ export async function preflightMission(command) {
   return formatPreflight({ command, preflight, fuel });
 }
 
+export async function planMission(goal, options = {}) {
+  await ensureStore();
+  const snapshot = await collectSnapshot(process.cwd());
+  const fuel = await readFuel();
+  const plan = buildAiWorkPlan(goal, {
+    quality: options.quality ?? "high",
+    fuelPercent: options.fuelPercent ?? fuel.currentPercent,
+    snapshot
+  });
+  const planDir = path.join(PLANS_DIR, plan.id);
+  await mkdir(planDir, { recursive: true });
+  await writeFile(path.join(planDir, "plan.json"), JSON.stringify(plan, null, 2));
+  await writeFile(path.join(planDir, "plan.md"), formatPlan(plan));
+  await writeFile(path.join(STORE_DIR, "latest-plan"), plan.id);
+  return plan;
+}
+
+export async function listPlans() {
+  await ensureStore();
+  const plans = await readPlans();
+  if (plans.length === 0) return "No plans recorded yet.";
+  return plans.map((plan) => [
+    plan.id,
+    `  goal: ${plan.goal}`,
+    `  budget risk: ${plan.budget.risk}`,
+    `  expected saving: ${plan.budget.expectedWasteReduction}`,
+    `  planning model: ${plan.routing.planningTier}`,
+    `  execution model: ${plan.routing.executionTier}`,
+    `  report: ${path.join(PLANS_DIR, plan.id, "plan.md")}`
+  ].join("\n")).join("\n\n");
+}
+
 export async function listMissions() {
   await ensureStore();
   const missions = await readMissionSummaries();
@@ -270,6 +303,18 @@ export async function startDashboard({ port = 8791 } = {}) {
         sendJson(response, await dashboardStatus());
       } else if (url.pathname === "/api/missions") {
         sendJson(response, await readMissionSummaries());
+      } else if (url.pathname === "/api/plans" && request.method === "GET") {
+        sendJson(response, await readPlans());
+      } else if (url.pathname === "/api/plans" && request.method === "POST") {
+        const body = safeJson(await readRequestBody(request));
+        if (!body.goal || typeof body.goal !== "string") {
+          sendJson(response, { error: "Missing plan goal." }, 400);
+          return;
+        }
+        sendJson(response, await planMission(body.goal, {
+          quality: body.quality,
+          fuelPercent: Number.isFinite(Number(body.fuelPercent)) ? Number(body.fuelPercent) : undefined
+        }), 201);
       } else if (url.pathname === "/api/gateway") {
         sendJson(response, await readGatewaySummary());
       } else if (url.pathname.startsWith("/api/missions/")) {
@@ -479,6 +524,7 @@ export async function calibrateFuel(id, afterPercent) {
 
 async function ensureStore() {
   await mkdir(MISSIONS_DIR, { recursive: true });
+  await mkdir(PLANS_DIR, { recursive: true });
 }
 
 function createMissionId(label) {
@@ -486,6 +532,136 @@ function createMissionId(label) {
   const cleanLabel = label ? `-${label.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 36)}` : "";
   const hash = createHash("sha1").update(`${stamp}${Math.random()}`).digest("hex").slice(0, 7);
   return `${stamp}${cleanLabel}-${hash}`;
+}
+
+function createPlanId(goal) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "");
+  const cleanGoal = goal.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-|-$/g, "").slice(0, 34) || "ai-work";
+  const hash = createHash("sha1").update(`${stamp}${goal}${Math.random()}`).digest("hex").slice(0, 7);
+  return `${stamp}-plan-${cleanGoal}-${hash}`;
+}
+
+function buildAiWorkPlan(goal, { quality = "high", fuelPercent = null, snapshot = {} } = {}) {
+  const cleanGoal = goal.trim();
+  const lower = cleanGoal.toLowerCase();
+  const words = cleanGoal.split(/\s+/).filter(Boolean).length;
+  const taskType = classifyTask(lower);
+  const bigSignals = [
+    /full|entire|complete|whole|production|everything|mvp|startup|platform/.test(lower),
+    /полное|полностью|приложение|платформ/.test(lower),
+    words > 22
+  ].filter(Boolean).length;
+  const hasRepo = Boolean(snapshot.packageJson);
+  const hasVerification = hasRepo && Object.keys(snapshot.packageJson?.scripts ?? {}).some((name) => /test|build|lint|typecheck/.test(name));
+  const fuel = Number.isFinite(Number(fuelPercent)) ? Number(fuelPercent) : null;
+  const budgetRisk = bigSignals > 0 || (fuel !== null && fuel < 30) ? "High" : fuel !== null && fuel < 55 ? "Medium" : "Low";
+  const expectedWasteReduction = budgetRisk === "High" ? "40-70%" : budgetRisk === "Medium" ? "25-45%" : "10-25%";
+  const qualityRisk = quality === "cheap" && budgetRisk === "High" ? "High" : budgetRisk === "High" ? "Medium" : "Low";
+  const routing = routeTask({ taskType, budgetRisk, quality, hasVerification });
+  const proof = proofForTask({ taskType, hasVerification });
+  const missions = missionBreakdown({ taskType, budgetRisk, proof });
+  return {
+    id: createPlanId(cleanGoal),
+    createdAt: new Date().toISOString(),
+    goal: cleanGoal,
+    taskType,
+    inputs: {
+      quality,
+      fuelPercent: fuel,
+      repoDetected: hasRepo,
+      verificationDetected: hasVerification
+    },
+    budget: {
+      risk: budgetRisk,
+      expectedWasteReduction,
+      reason: budgetRisk === "High"
+        ? "The goal is broad or fuel is low. A single agent run is likely to waste context and repeat work."
+        : "The goal can be controlled with smaller missions and proof checkpoints."
+    },
+    routing,
+    quality: {
+      risk: qualityRisk,
+      proof
+    },
+    missions,
+    stopRule: stopRuleForTask(taskType),
+    commandTemplates: commandTemplatesForPlan(cleanGoal, missions),
+    truth: {
+      source: "local_heuristic_planner",
+      costPrecision: "estimate_not_provider_bill",
+      qualityPrecision: "requires_artifact_review"
+    }
+  };
+}
+
+function classifyTask(lower) {
+  if (/code|bug|test|build|app|api|database|typescript|react|python|deploy|auth|repo|github/.test(lower)) return "software";
+  if (/video|script|post|content|image|marketing|copy|campaign|linkedin|youtube/.test(lower)) return "creative";
+  if (/invoice|crm|email|calendar|automation|report|workflow|support|sales|ops/.test(lower)) return "operations";
+  if (/research|market|competitor|analysis|strategy|audit/.test(lower)) return "research";
+  return "general";
+}
+
+function routeTask({ taskType, budgetRisk, quality, hasVerification }) {
+  const strongFirst = budgetRisk === "High" || quality === "high";
+  const executionTier = taskType === "software" && hasVerification
+    ? "Balanced or cheap model for narrow edits after diagnosis"
+    : taskType === "creative" && quality !== "high"
+      ? "Cheap model for drafts, strong model only for final review"
+      : taskType === "research"
+        ? "Cheap model for collection, strong model for synthesis"
+        : "Cheap model for execution with owner review";
+  return {
+    planningTier: strongFirst ? "Strong model for planning only" : "Cheap model first",
+    executionTier,
+    escalationRule: "Escalate to a stronger model only when proof fails, architecture is unclear, or the same blocker repeats."
+  };
+}
+
+function proofForTask({ taskType, hasVerification }) {
+  if (taskType === "software") {
+    return hasVerification
+      ? "diff exists, verification command passes, and changed files match the mission scope"
+      : "diff exists, app starts or manual smoke check is documented";
+  }
+  if (taskType === "creative") return "usable artifact exists, revision checklist is completed, and owner selects one direction";
+  if (taskType === "operations") return "sample workflow output is reviewed by owner and exception path is documented";
+  if (taskType === "research") return "source list, synthesis, and decision recommendation are separated";
+  return "artifact exists and owner can inspect whether it solves the requested job";
+}
+
+function missionBreakdown({ taskType, budgetRisk, proof }) {
+  const first = taskType === "software"
+    ? "Inspect the repo, identify files, dependencies, verification command, and risk. Do not write code yet."
+    : taskType === "creative"
+      ? "Define target audience, format, acceptance checklist, and 2-3 directions before generation."
+      : taskType === "operations"
+        ? "Map current workflow, inputs, outputs, owner approvals, and failure cases."
+        : "Clarify the decision, collect only necessary context, and define what proof will be accepted.";
+  const second = taskType === "software"
+    ? "Implement one narrow vertical slice and run exactly one verification command."
+    : "Create the smallest useful artifact that can be reviewed by the owner.";
+  return [
+    { name: "Discovery mission", modelTier: budgetRisk === "High" ? "Strong" : "Cheap", instruction: first, proof: "plan with files/tools/proof, no broad execution" },
+    { name: "Execution mission", modelTier: "Cheaper unless proof fails", instruction: second, proof },
+    { name: "Review mission", modelTier: "Strong only if needed", instruction: "Compare result against proof, list gaps, and decide continue/stop/rescue.", proof: "clear continue, stop, or rescue decision" }
+  ];
+}
+
+function stopRuleForTask(taskType) {
+  if (taskType === "software") return "Stop after the same error appears twice, after 10 minutes with no file changes, or after a broad rewrite request appears.";
+  if (taskType === "creative") return "Stop when output repeats, becomes generic, or produces no inspectable artifact.";
+  if (taskType === "operations") return "Stop when the agent cannot name the owner, system of record, approval point, or exception path.";
+  if (taskType === "research") return "Stop when sources are missing, claims are uncited, or the answer becomes a generic summary.";
+  return "Stop when there is no new artifact, no proof, or repeated generic output.";
+}
+
+function commandTemplatesForPlan(goal, missions) {
+  const quotedGoal = goal.replace(/"/g, '\\"');
+  return missions.map((mission, index) => ({
+    mission: mission.name,
+    command: `node ./bin/aim.mjs run --label plan-${index + 1} -- codex "${mission.instruction} Goal: ${quotedGoal} Proof required: ${mission.proof}"`
+  }));
 }
 
 async function runChild(command, cwd) {
@@ -787,6 +963,18 @@ async function readMissionSummaries() {
   return missions.filter(Boolean).map(summarizeMission).reverse();
 }
 
+async function readPlan(id) {
+  const file = path.join(PLANS_DIR, id, "plan.json");
+  return JSON.parse(await readFile(file, "utf8"));
+}
+
+async function readPlans() {
+  if (!existsSync(PLANS_DIR)) return [];
+  const ids = (await readdir(PLANS_DIR)).sort();
+  const plans = await Promise.all(ids.map(async (id) => readPlan(id).catch(() => null)));
+  return plans.filter(Boolean).reverse();
+}
+
 function summarizeMission(mission) {
   return {
     id: mission.id,
@@ -1017,6 +1205,56 @@ ${recommendationLines}
 - Progress proof: observed from git diff and command result
 - Error parsing: calculated from terminal logs
 - Rescue advice: generated from evidence packet, not from hidden assumptions
+`;
+}
+
+function formatPlan(plan) {
+  const missionLines = plan.missions.map((mission, index) => [
+    `${index + 1}. ${mission.name}`,
+    `   Model tier: ${mission.modelTier}`,
+    `   Instruction: ${mission.instruction}`,
+    `   Proof: ${mission.proof}`
+  ].join("\n")).join("\n\n");
+  const commandLines = plan.commandTemplates.map((template) => [
+    `### ${template.mission}`,
+    "```bash",
+    template.command,
+    "```"
+  ].join("\n")).join("\n\n");
+  return `# AI Work Plan
+
+Plan: ${plan.id}
+Goal: ${plan.goal}
+Task type: ${plan.taskType}
+Created: ${plan.createdAt}
+
+## Budget Decision
+- Risk: ${plan.budget.risk}
+- Expected waste reduction: ${plan.budget.expectedWasteReduction}
+- Reason: ${plan.budget.reason}
+
+## Model Routing
+- Planning: ${plan.routing.planningTier}
+- Execution: ${plan.routing.executionTier}
+- Escalation: ${plan.routing.escalationRule}
+
+## Quality Proof
+- Risk: ${plan.quality.risk}
+- Proof: ${plan.quality.proof}
+
+## Missions
+${missionLines}
+
+## Stop Rule
+${plan.stopRule}
+
+## Command Templates
+${commandLines}
+
+## Truth Labels
+- Planner source: ${plan.truth.source}
+- Cost precision: ${plan.truth.costPrecision}
+- Quality precision: ${plan.truth.qualityPrecision}
 `;
 }
 
@@ -1291,8 +1529,7 @@ function renderDashboardHtml() {
         '<div class="actions"><button class="primary" onclick="planTask()">Create managed plan</button><button class="ghost" onclick="copyPlan()">Copy plan</button></div>' +
         '</div>' +
         '</div>' +
-        '<div id="planner-result"></div>';
-      planTask();
+        '<div id="planner-result"><div class="panel"><h3>Ready when you are</h3><p class="hero-copy">Create a managed plan to save it locally, generate mission steps, and get copyable commands for agent runs.</p></div></div>';
     }
     async function showMission(id, activate = true) {
       state.selected = id;
@@ -1365,40 +1602,46 @@ function renderDashboardHtml() {
         bestModelTier: broad || failed ? "Strong first" : "Cheap ok"
       };
     }
-    function planTask() {
+    async function planTask() {
       const input = document.getElementById("task-input");
       const result = document.getElementById("planner-result");
       if (!input || !result) return;
       const text = input.value.trim();
+      if (!text) {
+        result.innerHTML = '<div class="panel"><h3>Missing goal</h3><p class="hero-copy">Describe the outcome before creating a managed plan.</p></div>';
+        return;
+      }
       const fuelValue = Number(document.getElementById("fuel-input")?.value ?? 24);
       const quality = document.getElementById("quality-input")?.value ?? "high";
-      const words = text.split(/\\s+/).filter(Boolean).length;
-      const looksBig = words > 18 || /full|entire|complete|whole|production|app|platform|everything|mvp|startup/i.test(text);
-      const isCreative = /video|script|post|content|image|marketing|copy|campaign/i.test(text);
-      const isCode = /code|bug|test|build|app|api|database|typescript|react|python|deploy|auth/i.test(text);
-      const isOps = /invoice|crm|email|calendar|automation|report|workflow|support/i.test(text);
-      const risk = looksBig || fuelValue < 30 ? "High" : fuelValue < 55 ? "Medium" : "Low";
-      const saving = risk === "High" ? "40-70%" : risk === "Medium" ? "25-45%" : "10-25%";
-      const firstTier = looksBig || quality === "high" ? "Strong model" : "Cheap model";
-      const executionTier = isCreative && quality !== "high" ? "Cheap model" : isCode ? "Balanced/cheap for narrow edits" : "Cheap model";
-      const proof = isCode ? "tests pass, diff exists, build command finishes" : isCreative ? "usable draft exists, revision checklist completed" : isOps ? "sample workflow/output reviewed by owner" : "artifact exists and owner can inspect it";
-      const stopRule = isCode ? "Stop after the same error appears twice, or after 10 minutes with no file changes." : "Stop when output repeats, becomes generic, or produces no inspectable artifact.";
-      const missionOne = isCode ? "Inspect repo and create implementation map. No code yet." : isCreative ? "Create direction and acceptance checklist." : "Clarify outcome, constraints, and success proof.";
-      const missionTwo = isCode ? "Implement one narrow slice and run one verification command." : isCreative ? "Generate first artifact cheaply, then polish only the selected version." : "Execute the smallest useful artifact.";
-      const missionThree = isCode ? "Use strong model only if verification fails or architecture is unclear." : "Use strong model only for final review or high-stakes decisions.";
+      result.innerHTML = '<div class="panel"><h3>Creating plan...</h3><p class="hero-copy">The manager is building budget, routing, proof, mission steps, and stop rules.</p></div>';
+      let plan;
+      try {
+        plan = await fetch("/api/plans", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ goal: text, fuelPercent: fuelValue, quality })
+        }).then(async (response) => {
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.error || "Plan request failed.");
+          return body;
+        });
+      } catch (error) {
+        result.innerHTML = '<div class="panel"><h3>Plan failed</h3><p class="hero-copy">' + esc(error.message) + '</p></div>';
+        return;
+      }
       result.innerHTML =
         '<div class="plan-grid">' +
-        '<div class="plan-card"><strong>Budget decision</strong><p>Risk: <b>' + esc(risk) + '</b>. Expected waste reduction: <b>' + esc(saving) + '</b>. Do not start with one giant agent run.</p></div>' +
-        '<div class="plan-card"><strong>Model routing</strong><p>Planning: <b>' + esc(firstTier) + '</b>. Execution: <b>' + esc(executionTier) + '</b>. Escalate only when proof fails.</p></div>' +
-        '<div class="plan-card"><strong>Quality proof</strong><p>' + esc(proof) + '</p></div>' +
+        '<div class="plan-card"><strong>Budget decision</strong><p>Risk: <b>' + esc(plan.budget.risk) + '</b>. Expected waste reduction: <b>' + esc(plan.budget.expectedWasteReduction) + '</b>. ' + esc(plan.budget.reason) + '</p></div>' +
+        '<div class="plan-card"><strong>Model routing</strong><p>Planning: <b>' + esc(plan.routing.planningTier) + '</b>. Execution: <b>' + esc(plan.routing.executionTier) + '</b></p></div>' +
+        '<div class="plan-card"><strong>Quality proof</strong><p>' + esc(plan.quality.proof) + '</p></div>' +
         '</div>' +
         '<div class="timeline">' +
-        '<div class="step"><div class="num">1</div><div><strong>Discovery mission</strong><p>' + esc(missionOne) + '</p></div></div>' +
-        '<div class="step"><div class="num">2</div><div><strong>Execution mission</strong><p>' + esc(missionTwo) + '</p></div></div>' +
-        '<div class="step"><div class="num">3</div><div><strong>Escalation rule</strong><p>' + esc(missionThree) + '</p></div></div>' +
-        '<div class="step"><div class="num">!</div><div><strong>Stop rule</strong><p>' + esc(stopRule) + '</p></div></div>' +
-        '</div>';
-      window.lastPlanText = "AI Agent Manager plan\\nTask: " + text + "\\nBudget risk: " + risk + "\\nExpected waste reduction: " + saving + "\\nPlanning model: " + firstTier + "\\nExecution model: " + executionTier + "\\nProof: " + proof + "\\nStop rule: " + stopRule;
+        plan.missions.map((mission, index) => '<div class="step"><div class="num">' + (index + 1) + '</div><div><strong>' + esc(mission.name) + '</strong><p>' + esc(mission.instruction) + '</p><p class="muted">Proof: ' + esc(mission.proof) + '</p></div></div>').join("") +
+        '<div class="step"><div class="num">!</div><div><strong>Stop rule</strong><p>' + esc(plan.stopRule) + '</p></div></div>' +
+        '</div>' +
+        '<details open><summary>Copyable agent commands</summary><pre>' + esc(plan.commandTemplates.map((item) => item.command).join("\\n\\n")) + '</pre></details>' +
+        '<details><summary>Plan truth labels</summary><pre>' + esc(JSON.stringify(plan.truth, null, 2)) + '</pre></details>';
+      window.lastPlanText = "AI Agent Manager plan\\nPlan: " + plan.id + "\\nGoal: " + plan.goal + "\\nBudget risk: " + plan.budget.risk + "\\nExpected waste reduction: " + plan.budget.expectedWasteReduction + "\\nPlanning model: " + plan.routing.planningTier + "\\nExecution model: " + plan.routing.executionTier + "\\nProof: " + plan.quality.proof + "\\nStop rule: " + plan.stopRule + "\\n\\nCommands:\\n" + plan.commandTemplates.map((item) => item.command).join("\\n\\n");
     }
     function copyPlan() {
       navigator.clipboard?.writeText(window.lastPlanText || "");

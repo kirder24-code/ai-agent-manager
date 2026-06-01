@@ -38,6 +38,8 @@ The point is not another token dashboard. The point is a clearer decision:
 
 ## What Works Today
 
+- Mission Planner turns a broad AI request into smaller managed steps before spend starts.
+- It recommends a planning model tier, execution tier, quality proof, and stop rule.
 - `aim preflight` checks whether a prompt is too broad before the agent starts.
 - `aim run -- <command>` wraps an agent or command and records the mission.
 - Terminal output, exit code, git diff, changed files, parsed errors, and stuck signals are captured.

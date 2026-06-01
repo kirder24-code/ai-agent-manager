@@ -1129,98 +1129,116 @@ function renderDashboardHtml() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Agent Manager</title>
   <style>
-    :root { color-scheme: dark; --bg:#0c1016; --panel:#151b24; --soft:#202938; --line:#2d3848; --text:#f6f8fc; --muted:#aab4c3; --good:#59d98e; --warn:#ffd166; --bad:#ff6b6b; --accent:#69d2ff; --violet:#b69cff; }
+    :root { color-scheme: dark; --bg:#080d13; --panel:#111821; --panel2:#17212d; --soft:#202b38; --line:#2c3948; --text:#f8fafc; --muted:#a8b3c2; --good:#52d789; --warn:#ffd166; --bad:#ff6868; --accent:#63d5ff; --violet:#b8a0ff; }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:linear-gradient(135deg, #0b1017 0%, #111827 52%, #15131f 100%); color:var(--text); }
-    header { padding:28px 36px 22px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; gap:20px; align-items:flex-end; }
-    h1 { margin:0; font-size:26px; font-weight:800; letter-spacing:0; }
-    h2 { margin:0; font-size:34px; letter-spacing:0; max-width:950px; line-height:1.12; }
-    h3 { margin:0 0 12px; font-size:14px; color:var(--muted); font-weight:800; text-transform:uppercase; }
-    .sub { color:var(--muted); margin-top:7px; font-size:14px; }
-    main { display:grid; grid-template-columns: 380px minmax(0, 1fr); min-height: calc(100vh - 98px); }
-    aside { border-right:1px solid var(--line); padding:18px; overflow:auto; background:rgba(10,14,20,0.38); }
-    section { padding:28px 32px 44px; overflow:auto; }
-    .summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-bottom:18px; }
-    .mini, .mission, .notice, .step, details, .planner, .roi-card, .metric { background:rgba(21,27,36,0.92); border:1px solid var(--line); border-radius:8px; }
-    .mini { padding:13px; min-height:74px; }
+    body { margin:0; min-height:100vh; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+    body:before { content:""; position:fixed; inset:0; pointer-events:none; background:radial-gradient(circle at 20% 0%, rgba(99,213,255,0.12), transparent 32%), radial-gradient(circle at 90% 8%, rgba(184,160,255,0.1), transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.03), transparent 260px); }
+    button, textarea, select, input { font:inherit; }
+    .app { position:relative; display:grid; grid-template-columns: 320px minmax(0,1fr); min-height:100vh; }
+    aside { border-right:1px solid var(--line); background:rgba(8,13,19,0.82); padding:22px; overflow:auto; }
+    main { padding:28px; overflow:auto; }
+    h1 { margin:0; font-size:24px; letter-spacing:0; }
+    h2 { margin:0; font-size:38px; line-height:1.06; letter-spacing:0; }
+    h3 { margin:0; font-size:15px; }
+    p { margin:0; }
+    .muted { color:var(--muted); }
+    .brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+    .mark { width:42px; height:42px; border-radius:8px; display:grid; place-items:center; color:#061017; font-weight:900; background:linear-gradient(135deg, var(--accent), var(--good)); }
+    .tagline { color:var(--muted); font-size:13px; margin-top:4px; line-height:1.35; }
+    .nav { display:grid; gap:8px; margin:18px 0 22px; }
+    .nav button { text-align:left; border:1px solid var(--line); background:rgba(17,24,33,0.82); color:var(--text); border-radius:8px; padding:12px; cursor:pointer; }
+    .nav button.active, .nav button:hover { border-color:var(--accent); background:#152434; }
+    .nav strong { display:block; }
+    .nav span { display:block; color:var(--muted); font-size:12px; margin-top:3px; }
+    .side-title { margin:18px 0 10px; color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; }
+    .summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .mini, .panel, .mission, .metric, .step, .plan-card, details { border:1px solid var(--line); background:rgba(17,24,33,0.9); border-radius:8px; }
+    .mini { padding:12px; min-height:76px; }
     .mini strong { display:block; font-size:22px; }
-    .mini span, .muted { color:var(--muted); font-size:13px; }
-    .mission { width:100%; color:inherit; text-align:left; margin:0 0 10px; cursor:pointer; padding:13px; }
+    .mini span { color:var(--muted); font-size:12px; }
+    .mission { width:100%; color:inherit; text-align:left; cursor:pointer; margin:0 0 10px; padding:12px; }
     .mission:hover, .mission.active { border-color:var(--accent); }
-    .mission.active { box-shadow: inset 3px 0 0 var(--accent); background:#182231; }
-    .mission-title { display:flex; gap:8px; align-items:center; justify-content:space-between; margin-bottom:6px; }
-    .mission-name { font-weight:750; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .status { font-size:12px; padding:3px 8px; border-radius:999px; border:1px solid var(--line); white-space:nowrap; }
-    .stuck { color:var(--bad); }
-    .at_risk { color:var(--warn); }
-    .progressing { color:var(--good); }
-    .product-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(320px,0.65fr); gap:16px; margin-bottom:16px; }
-    .notice { padding:28px; border-color:rgba(105,210,255,0.5); box-shadow:0 18px 60px rgba(0,0,0,0.24); }
-    .notice.stuck { border-color:rgba(255,107,107,0.5); }
-    .notice.at_risk { border-color:rgba(255,209,102,0.5); }
-    .headline { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:18px; }
-    .hero-copy { color:var(--muted); line-height:1.6; font-size:17px; max-width:980px; margin:14px 0 0; }
-    .pill-row { margin-top:18px; }
-    .badge { display:inline-block; border:1px solid var(--line); border-radius:999px; padding:5px 10px; color:var(--muted); font-size:12px; margin:0 6px 8px 0; }
-    .badge.warn { color:var(--warn); border-color:rgba(255,209,102,0.55); }
-    .badge.bad { color:var(--bad); border-color:rgba(255,107,107,0.55); }
-    .badge.good { color:var(--good); border-color:rgba(89,217,142,0.55); }
-    .problem { color:var(--muted); line-height:1.6; font-size:16px; max-width:900px; }
-    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:18px 0; }
+    .mission.active { background:#142232; box-shadow: inset 3px 0 0 var(--accent); }
+    .mission-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:7px; }
+    .mission-name { font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mission-line { color:var(--muted); font-size:13px; line-height:1.35; }
+    .status { font-size:12px; border:1px solid var(--line); padding:4px 8px; border-radius:999px; white-space:nowrap; }
+    .stuck { color:var(--bad); border-color:rgba(255,104,104,0.5); }
+    .at_risk { color:var(--warn); border-color:rgba(255,209,102,0.5); }
+    .progressing { color:var(--good); border-color:rgba(82,215,137,0.5); }
+    .hero { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(360px,0.8fr); gap:18px; margin-bottom:18px; }
+    .panel { padding:24px; }
+    .hero-copy { color:var(--muted); font-size:17px; line-height:1.55; margin-top:14px; max-width:880px; }
+    .badge-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+    .badge { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:6px 10px; font-size:12px; }
+    .badge.good { color:var(--good); border-color:rgba(82,215,137,0.48); }
+    .badge.warn { color:var(--warn); border-color:rgba(255,209,102,0.48); }
+    .badge.bad { color:var(--bad); border-color:rgba(255,104,104,0.48); }
     .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:20px; }
     .metric { padding:14px; }
-    .metric strong { display:block; font-size:22px; }
-    .metric span { display:block; color:var(--muted); font-size:13px; margin-top:4px; }
-    .planner { padding:20px; }
-    .planner label { display:block; color:var(--muted); font-size:13px; margin-bottom:8px; }
-    textarea { width:100%; min-height:94px; resize:vertical; background:#0d121a; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:12px; font:inherit; line-height:1.5; }
-    .primary { margin-top:10px; border:1px solid rgba(105,210,255,0.65); background:#102333; color:var(--text); border-radius:8px; padding:10px 13px; cursor:pointer; font-weight:750; }
-    .primary:hover { background:#143149; }
-    .planner-result { margin-top:14px; color:var(--muted); line-height:1.55; }
-    .planner-result strong { color:var(--text); }
-    .roi-card { padding:18px; margin-bottom:16px; border-color:rgba(89,217,142,0.35); }
-    .roi-card strong { color:var(--good); }
-    .step { padding:16px; }
-    .step strong { display:block; margin-bottom:8px; font-size:16px; }
-    .step p { color:var(--muted); line-height:1.5; margin:0; }
-    .action { background:var(--soft); border:1px solid rgba(112,214,255,0.55); border-radius:8px; padding:18px; margin-top:16px; }
-    .action-title { color:var(--accent); font-size:14px; font-weight:750; text-transform:uppercase; margin-bottom:8px; }
-    .prompt { white-space:pre-wrap; background:#0b0d10; border:1px solid var(--line); border-radius:8px; padding:14px; line-height:1.55; overflow:auto; }
-    .copy { border:1px solid var(--line); background:#0b0d10; color:var(--text); border-radius:6px; padding:8px 12px; cursor:pointer; margin-top:12px; }
-    .copy:hover { border-color:var(--accent); }
-    details { margin-top:16px; padding:14px 16px; }
-    summary { cursor:pointer; color:var(--muted); font-weight:700; }
-    pre { white-space:pre-wrap; background:#0b0d10; border:1px solid var(--line); border-radius:8px; padding:14px; line-height:1.5; overflow:auto; }
-    code { color:var(--accent); }
-    .decision { font-size:18px; color:var(--warn); font-weight:800; }
-    @media (max-width: 1120px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .product-grid, .grid, .metrics { grid-template-columns:1fr; } }
+    .metric strong { display:block; font-size:24px; line-height:1.1; }
+    .metric span { display:block; color:var(--muted); font-size:12px; margin-top:6px; }
+    .planner textarea { width:100%; min-height:128px; resize:vertical; background:#0a1017; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:13px; line-height:1.45; }
+    .field-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+    select, input { width:100%; background:#0a1017; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; }
+    label { display:block; color:var(--muted); font-size:12px; font-weight:750; margin:0 0 7px; }
+    .primary, .ghost { border-radius:8px; padding:10px 13px; cursor:pointer; font-weight:800; }
+    .primary { border:1px solid rgba(99,213,255,0.7); color:#061017; background:linear-gradient(135deg, var(--accent), var(--good)); }
+    .ghost { border:1px solid var(--line); color:var(--text); background:#0a1017; }
+    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    .plan-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:18px 0; }
+    .plan-card { padding:16px; }
+    .plan-card strong { display:block; margin-bottom:8px; }
+    .plan-card p, .step p { color:var(--muted); line-height:1.48; }
+    .timeline { display:grid; gap:10px; margin-top:14px; }
+    .step { padding:15px; display:grid; grid-template-columns:34px minmax(0,1fr); gap:12px; align-items:start; }
+    .num { width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#0a1017; border:1px solid var(--line); color:var(--accent); font-weight:900; }
+    .rescue { border-color:rgba(99,213,255,0.55); background:#172433; }
+    .decision { color:var(--warn); font-weight:900; font-size:18px; margin:8px 0 0; }
+    pre { white-space:pre-wrap; margin:12px 0 0; background:#070b10; border:1px solid var(--line); border-radius:8px; padding:13px; line-height:1.5; overflow:auto; }
+    details { padding:14px 16px; margin-top:14px; }
+    summary { cursor:pointer; color:var(--muted); font-weight:800; }
+    .hidden { display:none; }
+    .empty { padding:40px; text-align:left; }
+    .copy { margin-top:10px; }
+    @media (max-width: 1180px) { .app { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .hero, .plan-grid, .metrics { grid-template-columns:1fr; } .field-row { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>AI Agent Manager</h1>
-      <div class="sub">Spend less on AI work, keep quality, and stop agents before they waste budget.</div>
-    </div>
-    <div class="sub"><span id="fuel">Fuel: loading...</span><br><span id="truth">Truth: loading...</span></div>
-  </header>
-  <main>
+  <div class="app">
     <aside>
+      <div class="brand">
+        <div class="mark">AI</div>
+        <div>
+          <h1>AI Agent Manager</h1>
+          <div class="tagline">Plan AI work. Route models. Prove progress. Stop waste.</div>
+        </div>
+      </div>
+      <div class="nav">
+        <button id="nav-plan" class="active" onclick="setView('plan')"><strong>New AI Mission</strong><span>Estimate, split, route, then run</span></button>
+        <button id="nav-monitor" onclick="setView('monitor')"><strong>Active Work</strong><span>Rescue stuck agents with evidence</span></button>
+      </div>
+      <div class="side-title">AI budget signal</div>
+      <div class="mission">
+        <div class="mission-line" id="fuel">Fuel: loading...</div>
+        <div class="mission-line" id="truth">Gateway truth: loading...</div>
+      </div>
       <div class="summary">
         <div class="mini"><strong id="total">0</strong><span>checks</span></div>
         <div class="mini"><strong id="needs">0</strong><span>need attention</span></div>
         <div class="mini"><strong id="tokens">0</strong><span>API tokens</span></div>
         <div class="mini"><strong id="cost">$0</strong><span>API estimate</span></div>
       </div>
-      <h3>Recent agent checks</h3>
+      <div class="side-title">Recent agent checks</div>
       <div id="missions"></div>
     </aside>
-    <section id="detail">
-      <div class="notice"><p class="muted">Loading AI work manager...</p></div>
-    </section>
-  </main>
+    <main>
+      <section id="plan-view"></section>
+      <section id="monitor-view" class="hidden"></section>
+    </main>
+  </div>
   <script>
-    const state = { selected: null, missions: [] };
+    const state = { selected: null, missions: [], view: "plan" };
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
     async function load() {
       const [status, missions] = await Promise.all([
@@ -1235,30 +1253,60 @@ function renderDashboardHtml() {
       document.getElementById("tokens").textContent = status.gateway.totalTokens;
       document.getElementById("cost").textContent = "$" + status.gateway.estimatedCostUsd;
       renderList();
-      if (!state.selected && missions[0]) showMission(missions[0].id);
-      if (!missions[0]) renderEmpty();
+      renderPlanner(status);
+      if (!state.selected && missions[0]) showMission(missions[0].id, false);
+      if (!missions[0]) renderEmptyMonitor();
+    }
+    function setView(view) {
+      state.view = view;
+      document.getElementById("plan-view").classList.toggle("hidden", view !== "plan");
+      document.getElementById("monitor-view").classList.toggle("hidden", view !== "monitor");
+      document.getElementById("nav-plan").classList.toggle("active", view === "plan");
+      document.getElementById("nav-monitor").classList.toggle("active", view === "monitor");
     }
     function renderList() {
       document.getElementById("missions").innerHTML = state.missions.map((m) =>
         '<button class="mission ' + (m.id === state.selected ? 'active' : '') + '" onclick="showMission(\\'' + esc(m.id) + '\\')">' +
-        '<div class="mission-title"><span class="mission-name">' + esc(m.label || m.id.slice(0, 18)) + '</span><span class="status ' + esc(m.status) + '">' + labelStatus(m.status) + '</span></div>' +
-        '<div class="muted">' + esc(shortCommand(m.command)) + '</div>' +
-        '<div class="muted">' + summaryLine(m) + '</div>' +
+        '<div class="mission-head"><span class="mission-name">' + esc(m.label || m.id.slice(0, 18)) + '</span><span class="status ' + esc(m.status) + '">' + labelStatus(m.status) + '</span></div>' +
+        '<div class="mission-line">' + esc(shortCommand(m.command)) + '</div>' +
+        '<div class="mission-line">' + summaryLine(m) + '</div>' +
         '</button>'
       ).join("");
     }
-    async function showMission(id) {
+    function renderPlanner(status) {
+      const fuel = status.fuel.currentPercent === null ? 24 : Number(status.fuel.currentPercent);
+      document.getElementById("plan-view").innerHTML =
+        '<div class="hero">' +
+        '<div class="panel">' +
+        '<h2>Turn one expensive AI request into a managed plan.</h2>' +
+        '<p class="hero-copy">Describe the outcome you want. The manager estimates budget risk, splits the work into verifiable missions, recommends model tiers, and defines stop rules before credits are burned.</p>' +
+        '<div class="badge-row"><span class="badge good">Target: same or better result</span><span class="badge warn">Spend goal: 30-70% less waste</span><span class="badge">Fuel now: ' + esc(fuel) + '%</span></div>' +
+        '<div class="metrics"><div class="metric"><strong>Plan</strong><span>before spending</span></div><div class="metric"><strong>Route</strong><span>right model per task</span></div><div class="metric"><strong>Prove</strong><span>with output evidence</span></div><div class="metric"><strong>Learn</strong><span>from every run</span></div></div>' +
+        '</div>' +
+        '<div class="panel planner">' +
+        '<h3>Mission Planner</h3>' +
+        '<label for="task-input">What do you want AI to achieve?</label>' +
+        '<textarea id="task-input" placeholder="Example: build a mobile app MVP, create a video campaign, automate invoice processing, fix my React auth flow...">Build a mobile app MVP with login, database, dashboard and deployment</textarea>' +
+        '<div class="field-row"><div><label for="fuel-input">Available weekly fuel %</label><input id="fuel-input" type="number" min="0" max="100" value="' + esc(fuel) + '"></div><div><label for="quality-input">Quality target</label><select id="quality-input"><option value="high">High quality</option><option value="balanced">Balanced</option><option value="cheap">Cheapest acceptable</option></select></div></div>' +
+        '<div class="actions"><button class="primary" onclick="planTask()">Create managed plan</button><button class="ghost" onclick="copyPlan()">Copy plan</button></div>' +
+        '</div>' +
+        '</div>' +
+        '<div id="planner-result"></div>';
+      planTask();
+    }
+    async function showMission(id, activate = true) {
       state.selected = id;
+      if (activate) setView("monitor");
       renderList();
       const m = await fetch("/api/missions/" + encodeURIComponent(id)).then((r) => r.json());
       const d = diagnose(m);
       const roi = estimateRoi(m);
       const rec = m.rescue.recommendations[0] || {};
-      document.getElementById("detail").innerHTML =
-        '<div class="product-grid">' +
-        '<div class="notice ' + esc(m.stuck.status) + '">' +
+      document.getElementById("monitor-view").innerHTML =
+        '<div class="hero">' +
+        '<div class="panel ' + esc(m.stuck.status) + '">' +
         '<div class="headline"><div><h2>' + esc(d.title) + '</h2><p class="hero-copy">' + esc(d.description) + '</p></div><span class="status ' + esc(m.stuck.status) + '">' + labelStatus(m.stuck.status) + '</span></div>' +
-        '<div class="pill-row"><span class="badge ' + (m.stuck.status === "stuck" ? "bad" : m.stuck.status === "at_risk" ? "warn" : "good") + '">manager decision: ' + esc(d.managerDecision) + '</span><span class="badge">quality guard: ' + esc(d.qualityGuard) + '</span><span class="badge">fuel: ' + esc(m.fuelUsedPercent === null ? "needs calibration" : m.fuelUsedPercent + "%") + '</span></div>' +
+        '<div class="badge-row"><span class="badge ' + (m.stuck.status === "stuck" ? "bad" : m.stuck.status === "at_risk" ? "warn" : "good") + '">manager decision: ' + esc(d.managerDecision) + '</span><span class="badge">quality guard: ' + esc(d.qualityGuard) + '</span><span class="badge">fuel: ' + esc(m.fuelUsedPercent === null ? "needs calibration" : m.fuelUsedPercent + "%") + '</span></div>' +
         '<div class="metrics">' +
         '<div class="metric"><strong>' + esc(roi.spendRisk) + '</strong><span>spend risk</span></div>' +
         '<div class="metric"><strong>' + esc(roi.expectedSaving) + '</strong><span>possible saving</span></div>' +
@@ -1266,25 +1314,20 @@ function renderDashboardHtml() {
         '<div class="metric"><strong>' + esc(roi.bestModelTier) + '</strong><span>recommended tier</span></div>' +
         '</div>' +
         '</div>' +
-        '<div class="planner">' +
-        '<h3>Plan the next AI task</h3>' +
-        '<label for="task-input">Describe what you want the agent to do</label>' +
-        '<textarea id="task-input" placeholder="Example: build login, fix the failing test, create a video script, summarize customer calls...">' + esc(seedTask(m)) + '</textarea>' +
-        '<button class="primary" onclick="planTask()">Create cheaper plan</button>' +
-        '<div id="planner-result" class="planner-result"></div>' +
+        '<div class="panel rescue">' +
+        '<h3>Manager action</h3>' +
+        '<p class="decision">' + esc(rec.nextAction || d.next) + '</p>' +
+        '<div class="actions"><button class="primary" onclick="copyPrompt()">Copy rescue prompt</button><button class="ghost" onclick="prefillPlanner()">Plan safer rerun</button></div>' +
+        '<pre id="prompt-main">' + esc(rec.prompt || d.next) + '</pre>' +
         '</div>' +
         '</div>' +
-        '<div class="roi-card"><strong>What this app is supposed to save:</strong> it turns one expensive, vague AI run into smaller missions with proof, model choice, stop rules, and rescue prompts. The goal is not fewer tokens at any cost. The goal is less wasted intelligence for the same or better result.</div>' +
-        '<div class="grid">' +
-        '<div class="step"><strong>1. What the manager sees</strong><p>' + esc(d.happened) + '</p></div>' +
-        '<div class="step"><strong>2. Why it matters</strong><p>' + esc(d.cause) + '</p></div>' +
-        '<div class="step"><strong>3. Proof of progress</strong><p>' + esc(d.changed) + '</p></div>' +
+        '<div class="plan-grid">' +
+        '<div class="plan-card"><strong>What the manager sees</strong><p>' + esc(d.happened) + '</p></div>' +
+        '<div class="plan-card"><strong>Why it matters</strong><p>' + esc(d.cause) + '</p></div>' +
+        '<div class="plan-card"><strong>Proof of progress</strong><p>' + esc(d.changed) + '</p></div>' +
         '</div>' +
-        '<div class="action"><div class="action-title">Recommended next step</div><p class="decision">' + esc(rec.nextAction || d.next) + '</p><button class="copy" onclick="copyPrompt()">Copy rescue prompt</button><pre id="prompt-main" class="prompt">' + esc(rec.prompt || d.next) + '</pre></div>' +
         '<details><summary>Technical evidence</summary><pre>' + esc(JSON.stringify({ command:m.command.join(" "), changedFiles:m.diffEvidence.changedFiles, parsedErrors:m.errors, stuckSignals:m.stuck.signals, scopeRisk:m.preflight.scopeRisk }, null, 2)) + '</pre></details>' +
-        '<details><summary>Truth labels</summary><pre>Cost/Fuel: ' + (m.fuelUsedPercent === null ? 'unknown until calibrated' : 'manual calibration') + '\\nProgress proof: observed from git diff and command result\\nError parsing: calculated from terminal logs\\nRescue advice: generated from evidence packet</pre></details>' +
-        '</div>';
-      planTask();
+        '<details><summary>Truth labels</summary><pre>Cost/Fuel: ' + (m.fuelUsedPercent === null ? 'unknown until calibrated' : 'manual calibration') + '\\nProgress proof: observed from git diff and command result\\nError parsing: calculated from terminal logs\\nRescue advice: generated from evidence packet</pre></details>';
     }
     function copyPrompt() {
       const text = document.getElementById("prompt-main")?.textContent || "";
@@ -1304,12 +1347,8 @@ function renderDashboardHtml() {
       if (m.exitCode !== 0) return "command failed, no parsed error";
       return m.changedFileCount + " file change(s)";
     }
-    function renderEmpty() {
-      document.getElementById("detail").innerHTML =
-        '<div class="product-grid">' +
-        '<div class="notice"><h2>Tell the manager what AI work you want done</h2><p class="hero-copy">This app should estimate effort, choose the right model tier, split the task into cheaper missions, and stop waste before it becomes a bill.</p><div class="metrics"><div class="metric"><strong>Plan</strong><span>before spending</span></div><div class="metric"><strong>Route</strong><span>right model</span></div><div class="metric"><strong>Prove</strong><span>real progress</span></div><div class="metric"><strong>Rescue</strong><span>when stuck</span></div></div></div>' +
-        '<div class="planner"><h3>Plan the next AI task</h3><label for="task-input">Describe the task</label><textarea id="task-input" placeholder="Build a landing page, edit a video script, create a report, fix a bug..."></textarea><button class="primary" onclick="planTask()">Create cheaper plan</button><div id="planner-result" class="planner-result"></div></div>' +
-        '</div>';
+    function renderEmptyMonitor() {
+      document.getElementById("monitor-view").innerHTML = '<div class="panel empty"><h2>No observed runs yet</h2><p class="hero-copy">Start with a managed plan, then wrap an agent command with <code>aim run --</code>. This screen will show whether the agent is progressing, wasting spend, or needs rescue.</p></div>';
     }
     function seedTask(m) {
       const command = Array.isArray(m.command) ? m.command.join(" ") : String(m.command || "");
@@ -1331,14 +1370,47 @@ function renderDashboardHtml() {
       const result = document.getElementById("planner-result");
       if (!input || !result) return;
       const text = input.value.trim();
+      const fuelValue = Number(document.getElementById("fuel-input")?.value ?? 24);
+      const quality = document.getElementById("quality-input")?.value ?? "high";
       const words = text.split(/\\s+/).filter(Boolean).length;
-      const looksBig = words > 18 || /full|entire|complete|whole|production|app|platform|everything/i.test(text);
-      const isCreative = /video|script|post|content|image|marketing|copy/i.test(text);
-      const isCode = /code|bug|test|build|app|api|database|typescript|react|python/i.test(text);
-      const tier = looksBig ? "strong model for planning, cheaper model for execution" : isCreative ? "cheap model first, strong model only for final polish" : isCode ? "strong model for diagnosis, cheaper model for narrow edits" : "cheap model first";
-      const missions = looksBig ? "Split into discovery, plan, first artifact, verification, cleanup." : "Run one narrow mission with one proof command.";
-      const stopRule = isCode ? "Stop if tests fail twice with the same error or no files change." : "Stop if the output repeats itself or does not create a usable artifact.";
-      result.innerHTML = '<strong>Recommended routing:</strong> ' + esc(tier) + '<br><strong>Cheaper plan:</strong> ' + esc(missions) + '<br><strong>Stop rule:</strong> ' + esc(stopRule);
+      const looksBig = words > 18 || /full|entire|complete|whole|production|app|platform|everything|mvp|startup/i.test(text);
+      const isCreative = /video|script|post|content|image|marketing|copy|campaign/i.test(text);
+      const isCode = /code|bug|test|build|app|api|database|typescript|react|python|deploy|auth/i.test(text);
+      const isOps = /invoice|crm|email|calendar|automation|report|workflow|support/i.test(text);
+      const risk = looksBig || fuelValue < 30 ? "High" : fuelValue < 55 ? "Medium" : "Low";
+      const saving = risk === "High" ? "40-70%" : risk === "Medium" ? "25-45%" : "10-25%";
+      const firstTier = looksBig || quality === "high" ? "Strong model" : "Cheap model";
+      const executionTier = isCreative && quality !== "high" ? "Cheap model" : isCode ? "Balanced/cheap for narrow edits" : "Cheap model";
+      const proof = isCode ? "tests pass, diff exists, build command finishes" : isCreative ? "usable draft exists, revision checklist completed" : isOps ? "sample workflow/output reviewed by owner" : "artifact exists and owner can inspect it";
+      const stopRule = isCode ? "Stop after the same error appears twice, or after 10 minutes with no file changes." : "Stop when output repeats, becomes generic, or produces no inspectable artifact.";
+      const missionOne = isCode ? "Inspect repo and create implementation map. No code yet." : isCreative ? "Create direction and acceptance checklist." : "Clarify outcome, constraints, and success proof.";
+      const missionTwo = isCode ? "Implement one narrow slice and run one verification command." : isCreative ? "Generate first artifact cheaply, then polish only the selected version." : "Execute the smallest useful artifact.";
+      const missionThree = isCode ? "Use strong model only if verification fails or architecture is unclear." : "Use strong model only for final review or high-stakes decisions.";
+      result.innerHTML =
+        '<div class="plan-grid">' +
+        '<div class="plan-card"><strong>Budget decision</strong><p>Risk: <b>' + esc(risk) + '</b>. Expected waste reduction: <b>' + esc(saving) + '</b>. Do not start with one giant agent run.</p></div>' +
+        '<div class="plan-card"><strong>Model routing</strong><p>Planning: <b>' + esc(firstTier) + '</b>. Execution: <b>' + esc(executionTier) + '</b>. Escalate only when proof fails.</p></div>' +
+        '<div class="plan-card"><strong>Quality proof</strong><p>' + esc(proof) + '</p></div>' +
+        '</div>' +
+        '<div class="timeline">' +
+        '<div class="step"><div class="num">1</div><div><strong>Discovery mission</strong><p>' + esc(missionOne) + '</p></div></div>' +
+        '<div class="step"><div class="num">2</div><div><strong>Execution mission</strong><p>' + esc(missionTwo) + '</p></div></div>' +
+        '<div class="step"><div class="num">3</div><div><strong>Escalation rule</strong><p>' + esc(missionThree) + '</p></div></div>' +
+        '<div class="step"><div class="num">!</div><div><strong>Stop rule</strong><p>' + esc(stopRule) + '</p></div></div>' +
+        '</div>';
+      window.lastPlanText = "AI Agent Manager plan\\nTask: " + text + "\\nBudget risk: " + risk + "\\nExpected waste reduction: " + saving + "\\nPlanning model: " + firstTier + "\\nExecution model: " + executionTier + "\\nProof: " + proof + "\\nStop rule: " + stopRule;
+    }
+    function copyPlan() {
+      navigator.clipboard?.writeText(window.lastPlanText || "");
+    }
+    function prefillPlanner() {
+      setView("plan");
+      const input = document.getElementById("task-input");
+      if (input && state.selected) {
+        const selected = state.missions.find((m) => m.id === state.selected);
+        input.value = selected ? shortCommand(selected.command) : input.value;
+      }
+      planTask();
     }
     function diagnose(m) {
       const firstError = m.errors[0];

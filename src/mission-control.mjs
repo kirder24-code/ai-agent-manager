@@ -495,7 +495,7 @@ export async function showStatus(options = {}) {
   await ensureStore();
   const fuel = await readFuel();
   const fuelLine = fuel.currentPercent === null
-    ? "Fuel: unknown. Run `aim fuel set <percent>` to calibrate subscription limits."
+    ? "Fuel: unknown. Run `runcap fuel set <percent>` to calibrate subscription limits."
     : `Fuel: ${fuel.currentPercent}% (${fuel.source}, confidence: ${fuel.confidence})`;
   if (options.includeFuelOnly) return fuelLine;
 
@@ -595,6 +595,7 @@ function buildAiWorkPlan(goal, { quality = "high", fuelPercent = null, snapshot 
   const routing = routeTask({ taskType, budgetRisk, quality, hasVerification });
   const proof = proofForTask({ taskType, hasVerification });
   const missions = missionBreakdown({ taskType, budgetRisk, proof });
+  const cost = estimatePlanCost({ budgetRisk, bigSignals, words, taskType, quality });
   return {
     id: createPlanId(cleanGoal),
     createdAt: new Date().toISOString(),
@@ -609,6 +610,12 @@ function buildAiWorkPlan(goal, { quality = "high", fuelPercent = null, snapshot 
     budget: {
       risk: budgetRisk,
       expectedWasteReduction,
+      costLowUsd: cost.lowUsd,
+      costHighUsd: cost.highUsd,
+      costRange: cost.range,
+      recommendedCapUsd: cost.recommendedCapUsd,
+      recommendedCap: cost.recommendedCap,
+      costPrecision: cost.precision,
       reason: budgetRisk === "High"
         ? "The goal is broad or fuel is low. A single agent run is likely to waste context and repeat work."
         : "The goal can be controlled with smaller missions and proof checkpoints."
@@ -627,6 +634,49 @@ function buildAiWorkPlan(goal, { quality = "high", fuelPercent = null, snapshot 
       qualityPrecision: "requires_artifact_review"
     }
   };
+}
+
+// Estimate a USD cost RANGE for an agent run from scope signals, priced against
+// the sourced table. Deliberately a range, not an oracle: agent runs are
+// stochastic. The recommended cap sits above the high end so a normal run
+// completes but a runaway loop is stopped.
+function estimatePlanCost({ budgetRisk, bigSignals, words, taskType, quality }) {
+  // Base expected total tokens (input+output across the whole run, including
+  // the agent re-reading context on each loop). Software runs loop more.
+  let baseTokens = taskType === "software" ? 220000 : 120000;
+  baseTokens += words * 1500;
+  baseTokens += bigSignals * 350000;
+  if (budgetRisk === "High") baseTokens *= 2.4;
+  else if (budgetRisk === "Medium") baseTokens *= 1.5;
+
+  // Premium-model blended price ($/token): planning on a strong model is the
+  // expensive case, so we price the headline range against it to avoid
+  // under-promising. Opus-class: ~$5/M in, ~$25/M out, assume ~30% output.
+  const blendedPerToken = quality === "cheap"
+    ? (0.75 * 0.7 + 4.5 * 0.3) / 1_000_000   // cheap tier (gpt-5.4-mini)
+    : (5 * 0.7 + 25 * 0.3) / 1_000_000;       // strong tier (opus-class)
+
+  const mid = baseTokens * blendedPerToken;
+  // Range: runs vary widely, so +-45% around the midpoint.
+  const lowUsd = round2(mid * 0.55);
+  const highUsd = round2(mid * 1.45);
+  // Cap above the high end (1.5x) so a normal run finishes, a loop is killed.
+  const recommendedCapUsd = roundCap(highUsd * 1.5);
+  return {
+    lowUsd,
+    highUsd,
+    recommendedCapUsd,
+    range: `$${lowUsd.toFixed(2)}-$${highUsd.toFixed(2)}`,
+    recommendedCap: `$${recommendedCapUsd.toFixed(2)}`,
+    precision: "calculated_estimate_not_provider_bill"
+  };
+}
+
+function round2(n) { return Math.round(n * 100) / 100; }
+function roundCap(n) {
+  // Round caps to a friendly number: nearest $1 under $20, nearest $5 above.
+  if (n < 20) return Math.max(1, Math.ceil(n));
+  return Math.ceil(n / 5) * 5;
 }
 
 function classifyTask(lower) {
@@ -1249,7 +1299,7 @@ function shortSummary(mission) {
 
 function formatPreflight({ command, preflight, fuel }) {
   const fuelLine = fuel.currentPercent === null
-    ? "Fuel: unknown. Set it with `aim fuel set <percent>` if using subscriptions."
+    ? "Fuel: unknown. Set it with `runcap fuel set <percent>` if using subscriptions."
     : `Fuel: ${fuel.currentPercent}% (${fuel.confidence} confidence)`;
   const scopeAdvice = preflight.scopeRisk === "high"
     ? "Do not launch as one broad mission. Split into one vertical slice with a verification command."
@@ -1273,7 +1323,7 @@ function formatPreflight({ command, preflight, fuel }) {
 
 function formatReport(mission) {
   const fuel = mission.fuelUsedPercent === null
-    ? `Fuel: before ${mission.fuelBefore ?? "unknown"}%, after unknown. Calibrate with \`aim fuel calibrate ${mission.id} <after-percent>\`.`
+    ? `Fuel: before ${mission.fuelBefore ?? "unknown"}%, after unknown. Calibrate with \`runcap fuel calibrate ${mission.id} <after-percent>\`.`
     : `Fuel used: ${mission.fuelUsedPercent}% (source: manual calibration, confidence: high).`;
   const errorLines = mission.errors.length
     ? mission.errors.map((error) => `- ${error.kind} (${error.confidence}): ${error.raw}`).join("\n")
@@ -1287,7 +1337,7 @@ function formatReport(mission) {
     `   Next action: ${rec.nextAction}`,
     `   Rescue prompt: ${rec.prompt}`
   ].join("\n")).join("\n\n");
-  return `# AI Mission Report
+  return `# Runcap Mission Report
 
 Mission: ${mission.id}
 Command: \`${mission.command.join(" ")}\`
@@ -1396,7 +1446,7 @@ function formatHtmlReport(mission) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Mission Report - ${escapeHtml(mission.label ?? mission.id)}</title>
+  <title>Runcap Mission Report - ${escapeHtml(mission.label ?? mission.id)}</title>
   <style>
     :root { color-scheme: dark; --bg:#0f1115; --panel:#181c22; --soft:#202630; --line:#303946; --text:#f5f7fb; --muted:#a7b0bd; --accent:#70d6ff; --warn:#ffd166; --bad:#ff6b6b; --good:#55d78a; }
     * { box-sizing:border-box; }

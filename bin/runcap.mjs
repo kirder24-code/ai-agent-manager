@@ -106,13 +106,15 @@ try {
       "",
       `Runcap plan: ${plan.id}`,
       `Goal: ${plan.goal}`,
+      `Estimated cost: ${plan.budget.costRange} (${plan.budget.costPrecision})`,
+      `Recommended hard cap: ${plan.budget.recommendedCap}`,
       `Budget risk: ${plan.budget.risk}`,
       `Expected waste reduction: ${plan.budget.expectedWasteReduction}`,
       `Planning model: ${plan.routing.planningTier}`,
       `Execution model: ${plan.routing.executionTier}`,
       `Proof: ${plan.quality.proof}`,
       `Stop rule: ${plan.stopRule}`,
-      `Report: .aim-control/plans/${plan.id}/plan.md`,
+      `Report: .runcap/plans/${plan.id}/plan.md`,
       ""
     ].join("\n"));
   } else if (command === "plans") {
@@ -147,13 +149,13 @@ try {
     const subcommand = args[1] ?? "show";
     if (subcommand === "set") {
       const value = Number(args[2]);
-      if (!Number.isFinite(value)) throw new Error("Usage: aim fuel set <percent>");
+      if (!Number.isFinite(value)) throw new Error("Usage: runcap fuel set <percent>");
       console.log(await recordFuel(value));
     } else if (subcommand === "calibrate") {
       const id = args[2];
       const after = Number(args[3]);
       if (!id || !Number.isFinite(after)) {
-        throw new Error("Usage: aim fuel calibrate <mission-id> <after-percent>");
+        throw new Error("Usage: runcap fuel calibrate <mission-id> <after-percent>");
       }
       console.log(await calibrateFuel(id, after));
     } else {

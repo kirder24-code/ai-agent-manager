@@ -18,6 +18,13 @@ import {
   showStatus,
   templates
 } from "../src/mission-control.mjs";
+import {
+  loginCommand,
+  logoutCommand,
+  whoamiCommand,
+  syncRun,
+  planToRun
+} from "../src/cloud.mjs";
 
 const args = process.argv.slice(2);
 const command = args[0] ?? "help";
@@ -40,6 +47,9 @@ Usage:
   runcap gateway [--port 8792] [--mock]
   runcap setup
   runcap doctor
+  runcap login <license-key>     (Pro: enable cloud sync + hosted dashboard)
+  runcap logout
+  runcap whoami
   runcap fuel set <percent>
   runcap fuel calibrate <mission-id> <after-percent>
 
@@ -117,6 +127,15 @@ try {
       `Report: .runcap/plans/${plan.id}/plan.md`,
       ""
     ].join("\n"));
+    const sync = await syncRun(planToRun(plan));
+    if (sync === "synced") console.log("Cloud: synced to your Runcap Pro dashboard.");
+    else if (sync && sync.startsWith("sync_failed")) console.log(`Cloud: ${sync}`);
+  } else if (command === "login") {
+    console.log(await loginCommand(args[1]));
+  } else if (command === "logout") {
+    console.log(await logoutCommand());
+  } else if (command === "whoami") {
+    console.log(await whoamiCommand());
   } else if (command === "plans") {
     console.log(await listPlans());
   } else if (command === "status") {

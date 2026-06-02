@@ -5,6 +5,8 @@ import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promise
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { syncRun } from "./cloud.mjs";
+import { sendAlert } from "./alerts.mjs";
 
 const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
@@ -400,6 +402,22 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
         };
         await appendGatewayEvent(event);
         sendJson(response, { error: event.error, truth: event.truth }, 429);
+        const breachText = `Runcap: cap hit. Run blocked at $${summary.estimatedCostUsd} (cap $${budget}) on ${event.model}. The gateway stopped the call before it could spend more.`;
+        sendAlert(breachText)
+          .then((channels) => {
+            if (channels && channels.length) console.log(`Cap-breach alert sent to: ${channels.join(", ")}`);
+          })
+          .catch(() => {});
+        syncRun({
+          mission_id: null,
+          label: `gateway cap breach (${event.model})`,
+          estimate_low: budget,
+          estimate_high: summary.estimatedCostUsd,
+          cap: budget,
+          actual: summary.estimatedCostUsd,
+          capped: true,
+          status: "capped"
+        }).catch(() => {});
         return;
       }
       if (gatewayMode === "mock") {
@@ -464,6 +482,19 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
         truth: responseBody.usage ? "provider_usage" : "unknown",
         requestHash: createHash("sha1").update(bodyText).digest("hex")
       });
+      if (responseBody.usage) {
+        const spent = await readGatewaySummary();
+        syncRun({
+          mission_id: null,
+          label: "gateway session (actual spend)",
+          estimate_low: spent.estimatedCostUsd,
+          estimate_high: spent.estimatedCostUsd,
+          cap: budget,
+          actual: spent.estimatedCostUsd,
+          capped: false,
+          status: "running"
+        }).catch(() => {});
+      }
     } catch (error) {
       await appendGatewayEvent({
         at: new Date().toISOString(),

@@ -25,6 +25,7 @@ import {
   syncRun,
   planToRun
 } from "../src/cloud.mjs";
+import { alertsCommand } from "../src/alerts.mjs";
 
 const args = process.argv.slice(2);
 const command = args[0] ?? "help";
@@ -50,6 +51,7 @@ Usage:
   runcap login <license-key>     (Pro: enable cloud sync + hosted dashboard)
   runcap logout
   runcap whoami
+  runcap alerts [list|add|test|clear]   (Pro: phone alerts when a run hits its cap)
   runcap fuel set <percent>
   runcap fuel calibrate <mission-id> <after-percent>
 
@@ -136,6 +138,8 @@ try {
     console.log(await logoutCommand());
   } else if (command === "whoami") {
     console.log(await whoamiCommand());
+  } else if (command === "alerts") {
+    console.log(await alertsCommand(args.slice(1)));
   } else if (command === "plans") {
     console.log(await listPlans());
   } else if (command === "status") {

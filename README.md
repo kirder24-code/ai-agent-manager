@@ -132,6 +132,7 @@ If it cannot prove something, it says so.
 | Tier | Price | What you get |
 |---|---|---|
 | **OSS** (MIT, local) | $0 forever | All local runs, cost estimation, hard cap, run wrapping, stuck detection, rescue prompts, local dashboard. Never crippleware. |
+| **Founding Pro** (limited) | **$49 once** | Lifetime Pro at the founder price — pay once, keep Pro forever, before it moves to $19/mo. |
 | **Pro** | $19/mo | Cloud sync across machines, hosted dashboard, estimate-vs-actual trends, shareable reports, alerts on cap breach |
 | **Team** | $49/seat/mo | Shared budget pools, org-wide ceilings, per-project rollups, role-based caps |
 

@@ -619,7 +619,9 @@ function buildAiWorkPlan(goal, { quality = "high", fuelPercent = null, snapshot 
   ].filter(Boolean).length;
   const hasRepo = Boolean(snapshot.packageJson);
   const hasVerification = hasRepo && Object.keys(snapshot.packageJson?.scripts ?? {}).some((name) => /test|build|lint|typecheck/.test(name));
-  const fuel = Number.isFinite(Number(fuelPercent)) ? Number(fuelPercent) : null;
+  const fuel = fuelPercent === null || fuelPercent === undefined || fuelPercent === "" || !Number.isFinite(Number(fuelPercent))
+    ? null
+    : Number(fuelPercent);
   const budgetRisk = bigSignals > 0 || (fuel !== null && fuel < 30) ? "High" : fuel !== null && fuel < 55 ? "Medium" : "Low";
   const expectedWasteReduction = budgetRisk === "High" ? "40-70%" : budgetRisk === "Medium" ? "25-45%" : "10-25%";
   const qualityRisk = quality === "cheap" && budgetRisk === "High" ? "High" : budgetRisk === "High" ? "Medium" : "Low";

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" width="920" height="560" role="img" aria-label="Runcap terminal demo: plan, cap, compress, stop">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="0%" r="75%">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0.10"/>
+      <stop offset="60%" stop-color="#22d3ee" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="0" y="0" width="920" height="560" rx="16" fill="#0c0c0d"/>
+  <rect x="0" y="0" width="920" height="560" rx="16" fill="url(#glow)"/>
+  <rect x="0.5" y="0.5" width="919" height="559" rx="15.5" fill="none" stroke="#27272a"/>
+  <!-- title bar -->
+  <g>
+    <circle cx="26" cy="28" r="6" fill="#f87171"/>
+    <circle cx="48" cy="28" r="6" fill="#fbbf24"/>
+    <circle cx="70" cy="28" r="6" fill="#34d399"/>
+    <text x="100" y="33" fill="#8a8a8a" font-family="'JetBrains Mono',monospace" font-size="14">runcap — estimate · cap · compress · rescue</text>
+    <text x="770" y="33" fill="url(#brand)" font-family="'JetBrains Mono',monospace" font-weight="700" font-size="15">run·cap</text>
+  </g>
+  <line x1="0" y1="50" x2="920" y2="50" stroke="#1c1c1f"/>
+<text x="28" y="78" fill="#6ee7b7" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.037;0.069;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.037;0.069;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  $ runcap plan --fuel 24 -- "build a small auth feature and verify it"</text>
+<text x="28" y="105" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.138;0.169;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.138;0.169;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  Estimate:  $3 - $7   (range, not an oracle)</text>
+<text x="28" y="132" fill="#34d399" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.188;0.219;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.188;0.219;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  Recommended cap:  $10</text>
+<text x="28" y="159" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.200;0.231;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.200;0.231;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  </text>
+<text x="28" y="186" fill="#6ee7b7" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.275;0.306;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.275;0.306;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  $ ANTHROPIC_BASE_URL=http://127.0.0.1:8792/v1 \</text>
+<text x="28" y="213" fill="#6ee7b7" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.325;0.356;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.325;0.356;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+      AIM_DAILY_BUDGET_USD=10 runcap gateway</text>
+<text x="28" y="240" fill="#7a7a7a" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.400;0.431;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.400;0.431;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  gateway up  ·  compression on  ·  hard cap armed</text>
+<text x="28" y="267" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.412;0.444;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.412;0.444;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  </text>
+<text x="28" y="294" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.487;0.519;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.487;0.519;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  → request   10,144 tokens</text>
+<text x="28" y="321" fill="#34d399" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.575;0.606;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.575;0.606;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  → compressed 1,260 tokens   (JSON + logs trimmed, prose untouched)</text>
+<text x="28" y="348" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.588;0.619;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.588;0.619;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  </text>
+<text x="28" y="375" fill="#22d3ee" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.675;0.706;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.675;0.706;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  You saved $7.40  ·  would have spent $18.40  ·  cap $10</text>
+<text x="28" y="402" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.688;0.719;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.688;0.719;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  </text>
+<text x="28" y="429" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.762;0.794;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.762;0.794;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  → next call would cross the ceiling</text>
+<text x="28" y="456" fill="#f87171" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.850;0.881;0.97;1" dur="8s" repeatCount="indefinite"/>
+  <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.850;0.881;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
+  HTTP 429  budget_guard  — run stopped before money left your account</text>
+</svg>

@@ -7,6 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { syncRun } from "./cloud.mjs";
 import { sendAlert } from "./alerts.mjs";
+import { compressRequestBody } from "./compressor.mjs";
 
 const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
@@ -387,6 +388,24 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
       const requestBody = safeJson(bodyText) ?? {};
       const budget = readBudget();
       const summary = await readGatewaySummary();
+      // Compress the request body once (safe, lossless-by-construction). Disable with AIM_COMPRESS=off.
+      const compressionOn = (process.env.AIM_COMPRESS ?? "on").toLowerCase() !== "off";
+      let forwardBody = bodyText;
+      let compression = null;
+      if (compressionOn) {
+        const c = compressRequestBody(requestBody);
+        if (c.savedChars > 0 && c.touched > 0) {
+          forwardBody = JSON.stringify(c.body);
+          compression = {
+            savedTokens: c.savedTokens,
+            savedChars: c.savedChars,
+            beforeChars: c.before,
+            afterChars: c.after,
+            fieldsTouched: c.touched,
+            truth: "estimated"
+          };
+        }
+      }
       if (budget !== null && summary.estimatedCostUsd >= budget) {
         const event = {
           at: new Date().toISOString(),
@@ -432,6 +451,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
           durationMs: Date.now() - started,
           usage: responseBody.usage,
           cost: estimateApiCost(responseBody.usage, requestBody.model ?? responseBody.model),
+          compression,
           truth: "mock_provider_usage",
           requestHash: createHash("sha1").update(bodyText).digest("hex")
         });
@@ -461,7 +481,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
       const upstreamResponse = await fetch(upstreamUrl, {
         method: "POST",
         headers,
-        body: bodyText
+        body: forwardBody
       });
       const responseText = await upstreamResponse.text();
       response.writeHead(upstreamResponse.status, {
@@ -479,6 +499,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
         durationMs: Date.now() - started,
         usage: responseBody.usage ?? null,
         cost: estimateApiCost(responseBody.usage, requestBody.model ?? responseBody.model),
+        compression,
         truth: responseBody.usage ? "provider_usage" : "unknown",
         requestHash: createHash("sha1").update(bodyText).digest("hex")
       });
@@ -1132,6 +1153,7 @@ async function dashboardStatus() {
   return {
     fuel,
     gateway,
+    budget: readBudget(),
     missionCount: missions.length,
     latest: missions[0] ?? null,
     counts: missions.reduce((acc, mission) => {
@@ -1154,13 +1176,32 @@ async function readGatewayEvents() {
 async function readGatewaySummary() {
   const events = await readGatewayEvents();
   const successful = events.filter((event) => event.status >= 200 && event.status < 300);
-  const totalTokens = events.reduce((sum, event) => sum + Number(event.usage?.total_tokens ?? 0), 0);
+  const totalTokens = events.reduce((sum, event) => {
+    const u = event.usage;
+    if (!u) return sum;
+    const total = Number(u.total_tokens ?? 0) ||
+      Number(u.prompt_tokens ?? u.input_tokens ?? 0) + Number(u.completion_tokens ?? u.output_tokens ?? 0);
+    return sum + total;
+  }, 0);
   const estimatedCost = events.reduce((sum, event) => sum + Number(event.cost?.estimatedUsd ?? 0), 0);
+  const savedTokens = events.reduce((sum, event) => sum + Number(event.compression?.savedTokens ?? 0), 0);
+  // Value the saved tokens at a blended input rate from the price table so we can
+  // show one honest dollar figure. Per saved input token: use the model's input rate.
+  const savedUsd = events.reduce((sum, event) => {
+    const saved = Number(event.compression?.savedTokens ?? 0);
+    if (!saved) return sum;
+    const pricing = modelPricing(event.model);
+    const inputRate = pricing ? pricing.inputPerMillion : 3; // fall back to a mid Sonnet-ish rate
+    return sum + (saved * inputRate) / 1_000_000;
+  }, 0);
   return {
     callCount: events.length,
     successfulCallCount: successful.length,
     totalTokens,
     estimatedCostUsd: Number(estimatedCost.toFixed(6)),
+    savedTokens,
+    savedUsd: Number(savedUsd.toFixed(6)),
+    wouldHaveSpentUsd: Number((estimatedCost + savedUsd).toFixed(6)),
     truth: events.some((event) => event.truth === "provider_usage" || event.truth === "mock_provider_usage")
       ? "usage_plus_static_price_table"
       : "unknown",
@@ -1561,78 +1602,96 @@ function renderDashboardHtml() {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Runcap</title>
+  <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+  <link href="https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=general-sans@400,500,600,700&f[]=jetbrains-mono@400,500&display=swap" rel="stylesheet">
   <style>
-    :root { color-scheme: dark; --bg:#080d13; --panel:#111821; --panel2:#17212d; --soft:#202b38; --line:#2c3948; --text:#f8fafc; --muted:#a8b3c2; --good:#52d789; --warn:#ffd166; --bad:#ff6868; --accent:#63d5ff; --violet:#b8a0ff; }
+    :root { color-scheme: light; --bg:#f6f7f9; --panel:#ffffff; --panel2:#fbfbfc; --soft:#f0f2f5; --line:#e6e8ec; --text:#0b0d12; --muted:#6b7280; --good:#0d9f6e; --warn:#b7791f; --bad:#dc2626; --accent:#4f46e5; --violet:#7c3aed; --shadow:0 1px 2px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.06); }
     * { box-sizing: border-box; }
-    body { margin:0; min-height:100vh; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
-    body:before { content:""; position:fixed; inset:0; pointer-events:none; background:radial-gradient(circle at 20% 0%, rgba(99,213,255,0.12), transparent 32%), radial-gradient(circle at 90% 8%, rgba(184,160,255,0.1), transparent 34%), linear-gradient(180deg, rgba(255,255,255,0.03), transparent 260px); }
+    body { margin:0; min-height:100vh; font-family: "General Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+    body:before { content:""; position:fixed; inset:0; pointer-events:none; background:radial-gradient(circle at 18% -4%, rgba(79,70,229,0.06), transparent 36%), radial-gradient(circle at 92% 4%, rgba(124,58,237,0.05), transparent 38%); }
     button, textarea, select, input { font:inherit; }
     .app { position:relative; display:grid; grid-template-columns: 320px minmax(0,1fr); min-height:100vh; }
-    aside { border-right:1px solid var(--line); background:rgba(8,13,19,0.82); padding:22px; overflow:auto; }
-    main { padding:28px; overflow:auto; }
-    h1 { margin:0; font-size:24px; letter-spacing:0; }
-    h2 { margin:0; font-size:38px; line-height:1.06; letter-spacing:0; }
-    h3 { margin:0; font-size:15px; }
+    aside { border-right:1px solid var(--line); background:var(--panel); padding:22px; overflow:auto; }
+    main { padding:32px 36px; overflow:auto; }
+    h1 { margin:0; font-family:"Clash Display", sans-serif; font-weight:700; font-size:23px; letter-spacing:-0.01em; }
+    h2 { margin:0; font-family:"Clash Display", sans-serif; font-weight:600; font-size:34px; line-height:1.08; letter-spacing:-0.02em; }
+    h3 { margin:0; font-family:"Clash Display", sans-serif; font-weight:600; font-size:15px; }
     p { margin:0; }
     .muted { color:var(--muted); }
     .brand { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
-    .mark { width:42px; height:42px; border-radius:8px; display:grid; place-items:center; color:#061017; font-weight:900; background:linear-gradient(135deg, var(--accent), var(--good)); }
-    .tagline { color:var(--muted); font-size:13px; margin-top:4px; line-height:1.35; }
+    .mark { width:40px; height:40px; border-radius:11px; display:grid; place-items:center; color:#fff; font-family:"Clash Display",sans-serif; font-weight:700; background:linear-gradient(135deg, var(--accent), var(--violet)); box-shadow:var(--shadow); }
+    .tagline { color:var(--muted); font-size:13px; margin-top:3px; line-height:1.35; }
     .nav { display:grid; gap:8px; margin:18px 0 22px; }
-    .nav button { text-align:left; border:1px solid var(--line); background:rgba(17,24,33,0.82); color:var(--text); border-radius:8px; padding:12px; cursor:pointer; }
-    .nav button.active, .nav button:hover { border-color:var(--accent); background:#152434; }
-    .nav strong { display:block; }
+    .nav button { text-align:left; border:1px solid var(--line); background:var(--panel); color:var(--text); border-radius:11px; padding:12px 14px; cursor:pointer; transition:all .15s; }
+    .nav button.active, .nav button:hover { border-color:var(--accent); background:#f5f4ff; }
+    .nav strong { display:block; font-weight:600; }
     .nav span { display:block; color:var(--muted); font-size:12px; margin-top:3px; }
-    .side-title { margin:18px 0 10px; color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; }
+    .side-title { margin:18px 0 10px; color:var(--muted); font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; }
     .summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    .mini, .panel, .mission, .metric, .step, .plan-card, details { border:1px solid var(--line); background:rgba(17,24,33,0.9); border-radius:8px; }
-    .mini { padding:12px; min-height:76px; }
-    .mini strong { display:block; font-size:22px; }
+    .mini, .panel, .mission, .metric, .step, .plan-card, details { border:1px solid var(--line); background:var(--panel); border-radius:14px; }
+    .mini { padding:13px; min-height:76px; box-shadow:var(--shadow); }
+    .mini strong { display:block; font-family:"JetBrains Mono",monospace; font-size:22px; font-weight:500; }
     .mini span { color:var(--muted); font-size:12px; }
-    .mission { width:100%; color:inherit; text-align:left; cursor:pointer; margin:0 0 10px; padding:12px; }
+    .mission { width:100%; color:inherit; text-align:left; cursor:pointer; margin:0 0 10px; padding:13px; transition:all .15s; }
     .mission:hover, .mission.active { border-color:var(--accent); }
-    .mission.active { background:#142232; box-shadow: inset 3px 0 0 var(--accent); }
+    .mission.active { background:#f5f4ff; box-shadow: inset 3px 0 0 var(--accent); }
     .mission-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:7px; }
-    .mission-name { font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .mission-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .mission-line { color:var(--muted); font-size:13px; line-height:1.35; }
-    .status { font-size:12px; border:1px solid var(--line); padding:4px 8px; border-radius:999px; white-space:nowrap; }
-    .stuck { color:var(--bad); border-color:rgba(255,104,104,0.5); }
-    .at_risk { color:var(--warn); border-color:rgba(255,209,102,0.5); }
-    .progressing { color:var(--good); border-color:rgba(82,215,137,0.5); }
+    .status { font-size:12px; border:1px solid var(--line); padding:4px 9px; border-radius:999px; white-space:nowrap; font-weight:500; }
+    .stuck { color:var(--bad); border-color:rgba(220,38,38,0.35); background:rgba(220,38,38,0.05); }
+    .at_risk { color:var(--warn); border-color:rgba(183,121,31,0.35); background:rgba(183,121,31,0.05); }
+    .progressing { color:var(--good); border-color:rgba(13,159,110,0.35); background:rgba(13,159,110,0.05); }
     .hero { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(360px,0.8fr); gap:18px; margin-bottom:18px; }
-    .panel { padding:24px; }
-    .hero-copy { color:var(--muted); font-size:17px; line-height:1.55; margin-top:14px; max-width:880px; }
+    .panel { padding:26px; box-shadow:var(--shadow); }
+    .hero-copy { color:var(--muted); font-size:16px; line-height:1.55; margin-top:14px; max-width:880px; }
+    /* SAVINGS HERO — the one visible number (Kirill's core fix) */
+    .savings { grid-column:1 / -1; border:1px solid var(--line); border-radius:18px; padding:28px 30px; margin-bottom:18px; background:linear-gradient(135deg,#ffffff, #f7f6ff); box-shadow:var(--shadow); }
+    .savings-label { font-size:12px; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); }
+    .savings-row { display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-top:8px; }
+    .savings-big { font-family:"Clash Display",sans-serif; font-weight:700; font-size:clamp(40px,6vw,68px); line-height:1; letter-spacing:-0.03em; background:linear-gradient(135deg,var(--accent),var(--violet)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+    .savings-unit { font-family:"JetBrains Mono",monospace; font-size:17px; color:var(--muted); padding-bottom:8px; }
+    .savings-sub { color:var(--muted); font-size:15px; margin-top:12px; }
+    .savings-sub b { color:var(--text); font-family:"JetBrains Mono",monospace; font-weight:500; }
+    .capbar { margin-top:18px; }
+    .capbar-track { height:12px; border-radius:999px; background:var(--soft); overflow:hidden; border:1px solid var(--line); }
+    .capbar-fill { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--good),var(--accent)); transition:width .4s; }
+    .capbar-fill.warn { background:linear-gradient(90deg,var(--warn),#e8590c); }
+    .capbar-fill.over { background:linear-gradient(90deg,var(--bad),#991b1b); }
+    .capbar-meta { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-top:7px; font-family:"JetBrains Mono",monospace; }
     .badge-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
-    .badge { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:6px 10px; font-size:12px; }
-    .badge.good { color:var(--good); border-color:rgba(82,215,137,0.48); }
-    .badge.warn { color:var(--warn); border-color:rgba(255,209,102,0.48); }
-    .badge.bad { color:var(--bad); border-color:rgba(255,104,104,0.48); }
+    .badge { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:6px 11px; font-size:12px; background:var(--panel2); }
+    .badge.good { color:var(--good); border-color:rgba(13,159,110,0.35); }
+    .badge.warn { color:var(--warn); border-color:rgba(183,121,31,0.35); }
+    .badge.bad { color:var(--bad); border-color:rgba(220,38,38,0.35); }
     .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:20px; }
-    .metric { padding:14px; }
-    .metric strong { display:block; font-size:24px; line-height:1.1; }
+    .metric { padding:15px; box-shadow:var(--shadow); }
+    .metric strong { display:block; font-family:"JetBrains Mono",monospace; font-size:23px; font-weight:500; line-height:1.1; }
     .metric span { display:block; color:var(--muted); font-size:12px; margin-top:6px; }
-    .planner textarea { width:100%; min-height:128px; resize:vertical; background:#0a1017; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:13px; line-height:1.45; }
+    .planner textarea { width:100%; min-height:128px; resize:vertical; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:11px; padding:13px; line-height:1.45; }
     .field-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
-    select, input { width:100%; background:#0a1017; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; }
-    label { display:block; color:var(--muted); font-size:12px; font-weight:750; margin:0 0 7px; }
-    .primary, .ghost { border-radius:8px; padding:10px 13px; cursor:pointer; font-weight:800; }
-    .primary { border:1px solid rgba(99,213,255,0.7); color:#061017; background:linear-gradient(135deg, var(--accent), var(--good)); }
-    .ghost { border:1px solid var(--line); color:var(--text); background:#0a1017; }
+    select, input { width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:11px; padding:11px; }
+    label { display:block; color:var(--muted); font-size:12px; font-weight:600; margin:0 0 7px; }
+    .primary, .ghost { border-radius:11px; padding:11px 16px; cursor:pointer; font-weight:600; transition:all .15s; }
+    .primary { border:1px solid transparent; color:#fff; background:linear-gradient(135deg, var(--accent), var(--violet)); box-shadow:0 6px 16px rgba(79,70,229,0.25); }
+    .primary:hover { filter:brightness(1.06); transform:translateY(-1px); }
+    .ghost { border:1px solid var(--line); color:var(--text); background:var(--panel); }
+    .ghost:hover { border-color:var(--accent); }
     .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
     .plan-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:18px 0; }
-    .plan-card { padding:16px; }
-    .plan-card strong { display:block; margin-bottom:8px; }
+    .plan-card { padding:18px; box-shadow:var(--shadow); }
+    .plan-card strong { display:block; margin-bottom:8px; font-weight:600; }
     .plan-card p, .step p { color:var(--muted); line-height:1.48; }
     .timeline { display:grid; gap:10px; margin-top:14px; }
-    .step { padding:15px; display:grid; grid-template-columns:34px minmax(0,1fr); gap:12px; align-items:start; }
-    .num { width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:#0a1017; border:1px solid var(--line); color:var(--accent); font-weight:900; }
-    .rescue { border-color:rgba(99,213,255,0.55); background:#172433; }
-    .decision { color:var(--warn); font-weight:900; font-size:18px; margin:8px 0 0; }
-    pre { white-space:pre-wrap; margin:12px 0 0; background:#070b10; border:1px solid var(--line); border-radius:8px; padding:13px; line-height:1.5; overflow:auto; }
-    details { padding:14px 16px; margin-top:14px; }
-    summary { cursor:pointer; color:var(--muted); font-weight:800; }
+    .step { padding:16px; display:grid; grid-template-columns:34px minmax(0,1fr); gap:12px; align-items:start; box-shadow:var(--shadow); }
+    .num { width:28px; height:28px; border-radius:9px; display:grid; place-items:center; background:#f5f4ff; border:1px solid var(--line); color:var(--accent); font-family:"JetBrains Mono",monospace; font-weight:500; }
+    .rescue { border-color:rgba(79,70,229,0.4); background:linear-gradient(135deg,#ffffff,#f7f6ff); }
+    .decision { color:var(--bad); font-weight:600; font-size:18px; margin:8px 0 0; }
+    pre { white-space:pre-wrap; margin:12px 0 0; background:#0b0d12; color:#e6e8ec; border:1px solid var(--line); border-radius:11px; padding:14px; line-height:1.5; overflow:auto; font-family:"JetBrains Mono",monospace; font-size:13px; }
+    details { padding:14px 18px; margin-top:14px; box-shadow:var(--shadow); }
+    summary { cursor:pointer; color:var(--muted); font-weight:600; }
     .hidden { display:none; }
-    .empty { padding:40px; text-align:left; }
+    .empty { padding:42px; text-align:left; }
     .copy { margin-top:10px; }
     @media (max-width: 1180px) { .app { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } .hero, .plan-grid, .metrics { grid-template-columns:1fr; } .field-row { grid-template-columns:1fr; } }
   </style>
@@ -1641,10 +1700,10 @@ function renderDashboardHtml() {
   <div class="app">
     <aside>
       <div class="brand">
-        <div class="mark">AI</div>
+        <div class="mark">R</div>
         <div>
           <h1>Runcap</h1>
-          <div class="tagline">Plan AI work. Route models. Prove progress. Stop waste.</div>
+          <div class="tagline">Estimate cost. Cap spend. Compress tokens. Rescue stuck runs.</div>
         </div>
       </div>
       <div class="nav">
@@ -1657,10 +1716,10 @@ function renderDashboardHtml() {
         <div class="mission-line" id="truth">Gateway truth: loading...</div>
       </div>
       <div class="summary">
-        <div class="mini"><strong id="total">0</strong><span>checks</span></div>
-        <div class="mini"><strong id="needs">0</strong><span>need attention</span></div>
+        <div class="mini"><strong id="cost">$0</strong><span>spent so far</span></div>
+        <div class="mini"><strong id="saved" style="color:var(--good)">$0</strong><span>saved by compression</span></div>
         <div class="mini"><strong id="tokens">0</strong><span>API tokens</span></div>
-        <div class="mini"><strong id="cost">$0</strong><span>API estimate</span></div>
+        <div class="mini"><strong id="needs">0</strong><span>need attention</span></div>
       </div>
       <div class="side-title">Saved plans</div>
       <div id="plans"></div>
@@ -1685,13 +1744,16 @@ function renderDashboardHtml() {
       state.plans = plans;
       document.getElementById("fuel").textContent = status.fuel.currentPercent === null ? "Fuel: unknown" : "Fuel: " + status.fuel.currentPercent + "%";
       document.getElementById("truth").textContent = "Gateway truth: " + status.gateway.truth;
-      document.getElementById("total").textContent = status.missionCount;
       document.getElementById("needs").textContent = (status.counts.stuck ?? 0) + (status.counts.at_risk ?? 0);
-      document.getElementById("tokens").textContent = status.gateway.totalTokens;
-      document.getElementById("cost").textContent = "$" + status.gateway.estimatedCostUsd;
+      document.getElementById("tokens").textContent = Number(status.gateway.totalTokens || 0).toLocaleString();
+      document.getElementById("cost").textContent = "$" + (status.gateway.estimatedCostUsd ?? 0);
+      document.getElementById("saved").textContent = "$" + (status.gateway.savedUsd ?? 0);
+      state.gateway = status.gateway;
+      state.budget = status.budget;
       renderList();
       renderPlans();
       if (!state.plannerRendered) renderPlanner(status);
+      renderSavingsHero(status.gateway);
       if (!state.selected && missions[0]) showMission(missions[0].id, false);
       if (!missions[0]) renderEmptyMonitor();
     }
@@ -1720,10 +1782,40 @@ function renderDashboardHtml() {
         '</button>'
       ).join("");
     }
+    function renderSavingsHero(g) {
+      const el = document.getElementById("savings-hero");
+      if (!el || !g) return;
+      const saved = Number(g.savedUsd ?? 0);
+      const tokens = Number(g.savedTokens ?? 0);
+      const spent = Number(g.estimatedCostUsd ?? 0);
+      const wouldHave = Number(g.wouldHaveSpentUsd ?? spent);
+      const fmt = (n) => "$" + (n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2));
+      if (tokens === 0 && spent === 0) {
+        el.innerHTML = '<div class="savings"><div class="savings-label">Your savings will show here</div>' +
+          '<div class="savings-row"><div class="savings-big">$0.00</div><div class="savings-unit">saved so far</div></div>' +
+          '<div class="savings-sub">Point your agent at the Runcap gateway and every call is compressed and capped. This number grows on its own.</div></div>';
+        return;
+      }
+      // cap bar
+      let capHtml = '';
+      if (state.budget && state.budget > 0) {
+        const pct = Math.min(100, (spent / state.budget) * 100);
+        const cls = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : '';
+        capHtml = '<div class="capbar"><div class="capbar-track"><div class="capbar-fill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+          '<div class="capbar-meta"><span>spent ' + fmt(spent) + '</span><span>cap ' + fmt(state.budget) + '</span></div></div>';
+      }
+      el.innerHTML = '<div class="savings">' +
+        '<div class="savings-label">You saved</div>' +
+        '<div class="savings-row"><div class="savings-big">' + fmt(saved) + '</div><div class="savings-unit">' + tokens.toLocaleString() + ' tokens compressed away</div></div>' +
+        '<div class="savings-sub">You would have spent <b>' + fmt(wouldHave) + '</b> — Runcap compressed it down to <b>' + fmt(spent) + '</b>. Same answers, fewer tokens.</div>' +
+        capHtml +
+        '</div>';
+    }
     function renderPlanner(status) {
       state.plannerRendered = true;
       const fuel = status.fuel.currentPercent === null ? 24 : Number(status.fuel.currentPercent);
       document.getElementById("plan-view").innerHTML =
+        '<div id="savings-hero"></div>' +
         '<div class="hero">' +
         '<div class="panel">' +
         '<h2>Turn one expensive AI request into a managed plan.</h2>' +

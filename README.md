@@ -15,7 +15,7 @@ Multi-agent coding runs burn roughly **15x more tokens** than a single chat ([An
 Observability tools (Langfuse, Helicone, LangSmith, AgentOps) measure the past. Gateways (LiteLLM, Portkey, OpenRouter) route the present. None of them stop the spend *before* it happens. Runcap does the one thing the rear-view mirror can't:
 
 ```text
-estimate before build  →  cap during run  →  rescue when stuck  →  verify it finished
+estimate before build  →  cap during run  →  compress every call  →  rescue when stuck
 ```
 
 ## The honest claim
@@ -110,6 +110,12 @@ ANTHROPIC_API_KEY=sk-ant-... AIM_DAILY_BUDGET_USD=5 runcap gateway
 ```
 
 When spend crosses the ceiling, the next call returns `429 budget_guard` instead of money leaving your account. Try it with no key: `runcap gateway --mock`.
+
+## Token compression (built in, no extra deps)
+
+Every request that passes through the gateway is compressed before it's forwarded: embedded JSON is re-serialized compactly, long log/stack-trace dumps are collapsed to head + tail, and trailing whitespace is squeezed. This is **lossless by construction** — your prose instructions and code semantics are never altered, only machine "garbage" is trimmed. It's pure Node with **zero ML or native dependencies**, so it installs everywhere without the build pain heavier compressors have.
+
+The dashboard shows the result as one number: **"You saved $X · N tokens compressed · would have spent $Y."** Disable it with `AIM_COMPRESS=off` if you ever want raw passthrough.
 
 ## Pricing table
 

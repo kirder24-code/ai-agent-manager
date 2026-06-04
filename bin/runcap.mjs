@@ -19,6 +19,7 @@ import {
   setBudgetCap,
   clearBudgetCap,
   currentBudgetCap,
+  hasStoredCap,
   templates
 } from "../src/mission-control.mjs";
 import {
@@ -37,7 +38,8 @@ function usage() {
   console.log(`Runcap — cap every agent run before it starts
 
 Usage:
-  runcap run [--label name] [--fuel-before 24] -- <command...>
+  runcap run [--label name] [--cap|--no-cap] [--mock] -- <command...>
+                                 (auto-enforces your cap; no manual gateway/base-URL setup)
   runcap plan [--fuel 24] [--quality high|balanced|cheap] [--apply-cap] -- <goal...>
   runcap plans
   runcap cap <usd>               (set the hard cap the gateway enforces)
@@ -80,6 +82,13 @@ function takeOption(input, name) {
   return value;
 }
 
+function takeFlag(input, name) {
+  const index = input.indexOf(name);
+  if (index === -1) return false;
+  input.splice(index, 1);
+  return true;
+}
+
 try {
   if (command === "help" || command === "--help" || command === "-h") {
     usage();
@@ -87,17 +96,34 @@ try {
     const runArgs = args.slice(1);
     const label = takeOption(runArgs, "--label");
     const fuelBefore = takeOption(runArgs, "--fuel-before");
+    const forceCap = takeFlag(runArgs, "--cap");
+    const noCap = takeFlag(runArgs, "--no-cap");
+    const mock = takeFlag(runArgs, "--mock");
     const separator = runArgs.indexOf("--");
     const childArgs = separator === -1 ? runArgs : runArgs.slice(separator + 1);
     if (childArgs.length === 0) {
       throw new Error("Missing command after `aim run --`.");
     }
+    // Zero-config: auto-wrap with the cap gateway when a cap is set (or forced),
+    // unless explicitly disabled. No manual gateway start, no base-URL exports.
+    const capConfigured = Boolean(process.env.AIM_DAILY_BUDGET_USD) || hasStoredCap();
+    const autoGateway = !noCap && (forceCap || mock || capConfigured);
+    if (!autoGateway && !noCap && !capConfigured) {
+      console.log("runcap: no cap set, running without the gateway. Set one with `runcap cap <usd>` to enforce a budget.\n");
+    }
     const result = await runMission({
       command: childArgs,
       label,
-      fuelBefore: fuelBefore === undefined ? undefined : Number(fuelBefore)
+      fuelBefore: fuelBefore === undefined ? undefined : Number(fuelBefore),
+      autoGateway,
+      mock
     });
     console.log(result.summary);
+    if (result.capSummary) {
+      const c = result.capSummary;
+      const capLine = c.capUsd === null ? "no cap" : `cap $${c.capUsd.toFixed(2)}`;
+      console.log(`\nRuncap: cap enforced (${capLine}). This run spent ~$${c.spentThisRunUsd.toFixed(4)} (window total $${c.spentWindowUsd.toFixed(4)}).`);
+    }
   } else if (command === "preflight") {
     const runArgs = args.slice(1);
     const separator = runArgs.indexOf("--");

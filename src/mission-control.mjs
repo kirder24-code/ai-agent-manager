@@ -55,7 +55,7 @@ const ERROR_PATTERNS = [
   }
 ];
 
-export async function runMission({ command, label, fuelBefore }) {
+export async function runMission({ command, label, fuelBefore, autoGateway = false, mock = false }) {
   await ensureStore();
   const id = createMissionId(label);
   const missionDir = path.join(MISSIONS_DIR, id);
@@ -65,7 +65,29 @@ export async function runMission({ command, label, fuelBefore }) {
   const cwd = process.cwd();
   const before = await collectSnapshot(cwd);
   const preflight = buildPreflight(command.join(" "), before);
-  const output = await runChild(command, cwd);
+
+  // Zero-config: bring up a gateway for just this run and point the child's
+  // provider base URLs at it, so the cap is enforced without the user manually
+  // starting a gateway or exporting any base URL.
+  let gateway = null;
+  let childEnv = {};
+  const budgetBefore = readBudget();
+  const spentBefore = autoGateway ? (await readGatewaySummary({ windowMs: budgetWindowMs() })).estimatedCostUsd : 0;
+  if (autoGateway) {
+    gateway = await startEphemeralGateway({ mock });
+    childEnv = {
+      ANTHROPIC_BASE_URL: `${gateway.baseUrl}/v1`,
+      OPENAI_BASE_URL: `${gateway.baseUrl}/v1`,
+      OPENAI_API_BASE: `${gateway.baseUrl}/v1`
+    };
+  }
+
+  let output;
+  try {
+    output = await runChild(command, cwd, childEnv);
+  } finally {
+    if (gateway) await gateway.close().catch(() => {});
+  }
   const after = await collectSnapshot(cwd);
   const terminal = `${output.stdout}\n${output.stderr}`;
   const errors = parseErrors(terminal);
@@ -107,9 +129,21 @@ export async function runMission({ command, label, fuelBefore }) {
   await writeFile(path.join(missionDir, "report.html"), formatHtmlReport(mission));
   await writeFile(path.join(STORE_DIR, "latest"), id);
 
+  let capSummary = null;
+  if (autoGateway) {
+    const spentAfter = (await readGatewaySummary({ windowMs: budgetWindowMs() })).estimatedCostUsd;
+    capSummary = {
+      capUsd: budgetBefore,
+      spentThisRunUsd: Number((spentAfter - spentBefore).toFixed(6)),
+      spentWindowUsd: spentAfter,
+      mode: gateway?.gatewayMode ?? "proxy"
+    };
+  }
+
   return {
     id,
-    summary: shortSummary(mission)
+    summary: shortSummary(mission),
+    capSummary
   };
 }
 
@@ -237,6 +271,10 @@ export function currentBudgetCap() {
   if (cap === null) return "No cap set. Run `runcap cap <usd>` or `runcap plan --apply-cap`.";
   const src = process.env.AIM_DAILY_BUDGET_USD ? "env AIM_DAILY_BUDGET_USD" : `file ${BUDGET_FILE}`;
   return `Current hard cap: $${cap.toFixed(2)} per ${(process.env.AIM_BUDGET_WINDOW ?? "day")} (from ${src}).`;
+}
+
+export function hasStoredCap() {
+  return readStoredBudget() !== null;
 }
 
 export async function listPlans() {
@@ -388,13 +426,15 @@ async function listenLocal(server, port, label) {
   });
 }
 
-export async function startGateway({ port = 8792, mock = false } = {}) {
-  await ensureStore();
+// Build (but do not start) the gateway HTTP server. Upstream targets are
+// captured here from explicit args or env, so the auto-wrapper can pin the real
+// upstream BEFORE it rewrites the child's base URLs to point at this gateway.
+function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) {
   const gatewayMode = mock || process.env.AIM_GATEWAY_MODE === "mock" ? "mock" : "proxy";
-  const openaiKey = process.env.AIM_UPSTREAM_API_KEY ?? process.env.OPENAI_API_KEY;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const openaiBaseUrl = process.env.AIM_UPSTREAM_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
-  const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1";
+  const openaiKey = upstream.openaiKey ?? process.env.AIM_UPSTREAM_API_KEY ?? process.env.OPENAI_API_KEY;
+  const anthropicKey = upstream.anthropicKey ?? process.env.ANTHROPIC_API_KEY;
+  const openaiBaseUrl = upstream.openaiBaseUrl ?? process.env.AIM_UPSTREAM_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1";
+  const anthropicBaseUrl = upstream.anthropicBaseUrl ?? process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1";
   const anthropicVersion = process.env.ANTHROPIC_VERSION ?? "2023-06-01";
   if (gatewayMode !== "mock" && !openaiKey && !anthropicKey) {
     throw new Error("Missing upstream key. Set OPENAI_API_KEY (for /v1/chat/completions) and/or ANTHROPIC_API_KEY (for /v1/messages). The gateway cannot proxy without at least one.");
@@ -585,6 +625,13 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
       sendJson(response, { error: error.message }, 500);
     }
   });
+  return { server, gatewayMode, openaiKey, anthropicKey, openaiBaseUrl, anthropicBaseUrl };
+}
+
+export async function startGateway({ port = 8792, mock = false } = {}) {
+  await ensureStore();
+  const { server, gatewayMode, openaiKey, anthropicKey, openaiBaseUrl, anthropicBaseUrl } =
+    createGatewayServer({ port, mock });
   await listenLocal(server, port, "gateway");
   console.log(`Runcap gateway: http://127.0.0.1:${port}/v1`);
   console.log(`Mode: ${gatewayMode}`);
@@ -595,6 +642,33 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
     console.log(`Upstream (Anthropic /v1/messages): ${anthropicKey ? anthropicBaseUrl : "no key set"}`);
   }
   console.log("Press Ctrl+C to stop.");
+}
+
+// Start the gateway on an ephemeral free port for the duration of one wrapped
+// run, returning a handle the wrapper uses to point the child at it and to shut
+// it down afterward. Upstream is pinned from the CURRENT env before the child's
+// base URLs are rewritten, so the gateway proxies to the real provider, not to
+// itself.
+async function startEphemeralGateway({ mock = false } = {}) {
+  await ensureStore();
+  const upstream = {
+    openaiKey: process.env.AIM_UPSTREAM_API_KEY ?? process.env.OPENAI_API_KEY,
+    anthropicKey: process.env.ANTHROPIC_API_KEY,
+    openaiBaseUrl: process.env.AIM_UPSTREAM_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+    anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com/v1"
+  };
+  const { server, gatewayMode } = createGatewayServer({ port: 0, mock, upstream });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const actualPort = server.address().port;
+  return {
+    port: actualPort,
+    baseUrl: `http://127.0.0.1:${actualPort}`,
+    gatewayMode,
+    close: () => new Promise((resolve) => server.close(resolve))
+  };
 }
 
 export async function showStatus(options = {}) {
@@ -857,13 +931,13 @@ function commandTemplatesForPlan(goal, missions) {
   }));
 }
 
-async function runChild(command, cwd) {
+async function runChild(command, cwd, extraEnv = {}) {
   const started = Date.now();
   const [program, ...args] = command;
   return await new Promise((resolve) => {
     const child = spawn(program, args, {
       cwd,
-      env: { ...process.env, AIM_WRAPPED: "1" },
+      env: { ...process.env, AIM_WRAPPED: "1", ...extraEnv },
       shell: false
     });
     let stdout = "";

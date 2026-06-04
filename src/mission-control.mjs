@@ -368,6 +368,80 @@ export async function doctor() {
   ].join("\n");
 }
 
+// Guided first-run, shown when `runcap` is invoked with no arguments. Explains
+// in one screen what Runcap does, what it does NOT do, checks readiness, and
+// gives exactly ONE next step based on the current state — so a newcomer reaches
+// their first result without reading docs.
+export async function welcome() {
+  await ensureStore();
+  const hasOpenAiKey = Boolean(process.env.AIM_UPSTREAM_API_KEY ?? process.env.OPENAI_API_KEY);
+  const hasAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY);
+  const hasAnyKey = hasOpenAiKey || hasAnthropicKey;
+  const cap = readBudget();
+  const gateway = await readGatewaySummary({ windowMs: budgetWindowMs() });
+  const window = process.env.AIM_BUDGET_WINDOW ?? "day";
+
+  const tick = (ok) => (ok ? "[x]" : "[ ]");
+  const keyLabel = hasAnyKey
+    ? `API key detected (${[hasAnthropicKey && "Anthropic", hasOpenAiKey && "OpenAI"].filter(Boolean).join(" + ")})`
+    : "No API key in this shell (set ANTHROPIC_API_KEY or OPENAI_API_KEY)";
+  const capLabel = cap === null ? "No cap set yet" : `Cap set: $${cap.toFixed(2)} per ${window}`;
+
+  // One next step, chosen by what is missing.
+  let nextStep;
+  if (!hasAnyKey) {
+    nextStep = [
+      "Next: give Runcap the same provider key your agent already uses, e.g.",
+      "  export ANTHROPIC_API_KEY=sk-...      # or OPENAI_API_KEY=sk-...",
+      "Then run `runcap` again."
+    ];
+  } else if (cap === null) {
+    nextStep = [
+      "Next: set the most you want a run to spend, then run your agent through Runcap:",
+      "  runcap cap 5",
+      "  runcap run -- claude \"fix the failing test\"",
+      "Runcap starts a local gateway, points your agent at it, and blocks any call",
+      "that would push spend over $5, before it reaches the paid API.",
+      "",
+      "Not sure what to cap at? Estimate first:",
+      "  runcap plan --apply-cap -- \"the task you're about to run\""
+    ];
+  } else {
+    nextStep = [
+      `You're ready. Cap is $${cap.toFixed(2)} per ${window}. Run any agent through Runcap:`,
+      "  runcap run -- claude \"fix the failing test\"",
+      "  runcap run -- codex \"...\"      runcap run -- python my_agent.py",
+      "",
+      gateway.callCount > 0
+        ? `Spent so far this ${window}: $${gateway.estimatedCostUsd.toFixed(4)} across ${gateway.callCount} calls. See: runcap status`
+        : "No calls recorded yet. Your first `runcap run` will show the spend."
+    ];
+  }
+
+  return [
+    "Runcap: see and cap what your AI agent spends, before it spends it.",
+    "",
+    "What it does:",
+    "  - Prices each call your agent makes from its own tokens.",
+    "  - Blocks any call that would exceed your cap BEFORE it hits the paid API.",
+    "  - Shows you the real spend, per run and per day.",
+    "",
+    "What it does NOT do (so there are no surprises):",
+    "  - It does not give you an AI model. You bring your own provider API key.",
+    "  - It does not run tasks for you. You bring your own agent (Claude Code,",
+    "    Codex, a script: anything that calls OpenAI/Anthropic).",
+    "  - It is a local tool for that setup, not a no-account web app.",
+    "",
+    "Readiness:",
+    `  ${tick(hasAnyKey)} ${keyLabel}`,
+    `  ${tick(cap !== null)} ${capLabel}`,
+    "",
+    ...nextStep,
+    "",
+    "Full command list: `runcap help`."
+  ].join("\n");
+}
+
 export async function startDashboard({ port = 8791 } = {}) {
   await ensureStore();
   const server = http.createServer(async (request, response) => {
@@ -2010,7 +2084,7 @@ function renderDashboardHtml() {
       el.innerHTML = '<div class="savings">' +
         '<div class="savings-label">You saved</div>' +
         '<div class="savings-row"><div class="savings-big">' + fmt(saved) + '</div><div class="savings-unit">' + tokens.toLocaleString() + ' tokens compressed away</div></div>' +
-        '<div class="savings-sub">You would have spent <b>' + fmt(wouldHave) + '</b> — Runcap compressed it down to <b>' + fmt(spent) + '</b>. Same answers, fewer tokens.</div>' +
+        '<div class="savings-sub">You would have spent <b>' + fmt(wouldHave) + '</b>, Runcap compressed it down to <b>' + fmt(spent) + '</b>. Same answers, fewer tokens.</div>' +
         capHtml +
         '</div>';
     }

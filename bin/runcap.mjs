@@ -20,6 +20,7 @@ import {
   clearBudgetCap,
   currentBudgetCap,
   hasStoredCap,
+  welcome,
   templates
 } from "../src/mission-control.mjs";
 import {
@@ -32,7 +33,7 @@ import {
 import { alertsCommand } from "../src/alerts.mjs";
 
 const args = process.argv.slice(2);
-const command = args[0] ?? "help";
+const command = args[0] ?? "welcome";
 
 function usage() {
   console.log(`Runcap — cap every agent run before it starts
@@ -90,7 +91,9 @@ function takeFlag(input, name) {
 }
 
 try {
-  if (command === "help" || command === "--help" || command === "-h") {
+  if (command === "welcome") {
+    console.log(await welcome());
+  } else if (command === "help" || command === "--help" || command === "-h") {
     usage();
   } else if (command === "run") {
     const runArgs = args.slice(1);

@@ -643,8 +643,11 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
             "authorization": `Bearer ${upstreamKey}`,
             "content-type": request.headers["content-type"] ?? "application/json"
           };
-      // Anthropic base URLs already include /v1; avoid doubling it.
-      const pathForUpstream = isAnthropic ? url.pathname.replace(/^\/v1/, "") : url.pathname;
+      // Both default upstream base URLs already include /v1, and the child calls
+      // us at /v1/*. Strip the leading /v1 from the path when the upstream base
+      // already ends in /v1, so we never produce a doubled /v1/v1 (OpenAI 404).
+      const baseHasV1 = /\/v1\/?$/.test(upstreamBase);
+      const pathForUpstream = baseHasV1 ? url.pathname.replace(/^\/v1/, "") : url.pathname;
       const upstreamUrl = `${upstreamBase.replace(/\/$/, "")}${pathForUpstream}`;
       const upstreamResponse = await fetch(upstreamUrl, {
         method: "POST",

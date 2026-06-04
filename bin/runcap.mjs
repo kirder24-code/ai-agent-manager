@@ -16,6 +16,9 @@ import {
   startDashboard,
   startGateway,
   showStatus,
+  setBudgetCap,
+  clearBudgetCap,
+  currentBudgetCap,
   templates
 } from "../src/mission-control.mjs";
 import {
@@ -35,8 +38,11 @@ function usage() {
 
 Usage:
   runcap run [--label name] [--fuel-before 24] -- <command...>
-  runcap plan [--fuel 24] [--quality high|balanced|cheap] -- <goal...>
+  runcap plan [--fuel 24] [--quality high|balanced|cheap] [--apply-cap] -- <goal...>
   runcap plans
+  runcap cap <usd>               (set the hard cap the gateway enforces)
+  runcap cap show                (show the current cap)
+  runcap cap clear               (remove the stored cap)
   runcap preflight -- <command or prompt...>
   runcap status
   runcap list
@@ -102,6 +108,9 @@ try {
     console.log(await preflightMission(childArgs));
   } else if (command === "plan") {
     const planArgs = args.slice(1);
+    const applyCapIndex = planArgs.indexOf("--apply-cap");
+    const applyCap = applyCapIndex !== -1;
+    if (applyCap) planArgs.splice(applyCapIndex, 1);
     const fuelPercent = takeOption(planArgs, "--fuel");
     const quality = takeOption(planArgs, "--quality") ?? "high";
     const separator = planArgs.indexOf("--");
@@ -129,6 +138,10 @@ try {
       `Report: .runcap/plans/${plan.id}/plan.md`,
       ""
     ].join("\n"));
+    if (applyCap) {
+      console.log(await setBudgetCap(plan.budget.recommendedCapUsd, { source: `plan:${plan.id}` }));
+      console.log("");
+    }
     const sync = await syncRun(planToRun(plan));
     if (sync === "synced") console.log("Cloud: synced to your Runcap Pro dashboard.");
     else if (sync && sync.startsWith("sync_failed")) console.log(`Cloud: ${sync}`);
@@ -140,6 +153,15 @@ try {
     console.log(await whoamiCommand());
   } else if (command === "alerts") {
     console.log(await alertsCommand(args.slice(1)));
+  } else if (command === "cap") {
+    const sub = args[1];
+    if (sub === undefined || sub === "show") {
+      console.log(currentBudgetCap());
+    } else if (sub === "clear") {
+      console.log(await clearBudgetCap());
+    } else {
+      console.log(await setBudgetCap(sub));
+    }
   } else if (command === "plans") {
     console.log(await listPlans());
   } else if (command === "status") {

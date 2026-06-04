@@ -2,18 +2,19 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import http from "node:http";
 import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { syncRun } from "./cloud.mjs";
 import { sendAlert } from "./alerts.mjs";
-import { compressRequestBody } from "./compressor.mjs";
+import { compressRequestBody, estimateTokens } from "./compressor.mjs";
 
 const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
 const PLANS_DIR = path.join(STORE_DIR, "plans");
 const FUEL_FILE = path.join(STORE_DIR, "fuel.json");
 const GATEWAY_EVENTS_FILE = path.join(STORE_DIR, "gateway-events.jsonl");
+const BUDGET_FILE = path.join(STORE_DIR, "budget.json");
 const ENV_EXAMPLE_FILE = ".env.example";
 
 const ERROR_PATTERNS = [
@@ -210,6 +211,34 @@ export async function planMission(goal, options = {}) {
   return plan;
 }
 
+// Persist a hard cap to .runcap/budget.json so the gateway enforces it without
+// the user manually exporting AIM_DAILY_BUDGET_USD. env still wins if set.
+export async function setBudgetCap(capUsd, { source = "manual" } = {}) {
+  await ensureStore();
+  const value = Number(capUsd);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error("Usage: runcap cap <usd> (a non-negative number).");
+  }
+  await writeFile(BUDGET_FILE, JSON.stringify({ capUsd: value, source, setAt: new Date().toISOString() }, null, 2));
+  const envNote = process.env.AIM_DAILY_BUDGET_USD
+    ? "\nNote: AIM_DAILY_BUDGET_USD is set in your env and overrides this file."
+    : "";
+  return `Hard cap set: $${value.toFixed(2)} per ${(process.env.AIM_BUDGET_WINDOW ?? "day")}. Saved to ${BUDGET_FILE}.${envNote}`;
+}
+
+export async function clearBudgetCap() {
+  await ensureStore();
+  if (existsSync(BUDGET_FILE)) await writeFile(BUDGET_FILE, JSON.stringify({ capUsd: null, clearedAt: new Date().toISOString() }, null, 2));
+  return "Stored cap cleared. The gateway will only enforce AIM_DAILY_BUDGET_USD if set.";
+}
+
+export function currentBudgetCap() {
+  const cap = readBudget();
+  if (cap === null) return "No cap set. Run `runcap cap <usd>` or `runcap plan --apply-cap`.";
+  const src = process.env.AIM_DAILY_BUDGET_USD ? "env AIM_DAILY_BUDGET_USD" : `file ${BUDGET_FILE}`;
+  return `Current hard cap: $${cap.toFixed(2)} per ${(process.env.AIM_BUDGET_WINDOW ?? "day")} (from ${src}).`;
+}
+
 export async function listPlans() {
   await ensureStore();
   const plans = await readPlans();
@@ -247,8 +276,14 @@ export async function setupProject() {
     "OPENAI_API_KEY=",
     "AIM_UPSTREAM_BASE_URL=https://api.openai.com/v1",
     "",
-    "# Optional budget guard. If estimated spend already exceeds this, gateway blocks new calls.",
+    "# Hard cap (USD) per budget window. The gateway prices each call from its",
+    "# own tokens and blocks it BEFORE forwarding if it would push spend over the cap.",
+    "# You can also set this with `runcap cap <usd>` or `runcap plan --apply-cap`.",
     "AIM_DAILY_BUDGET_USD=5",
+    "",
+    "# Budget window: day (default, rolling 24h), session (since gateway start),",
+    "# all (never resets), or a number of hours. Caps reset per window.",
+    "AIM_BUDGET_WINDOW=day",
     "",
     "# For demo mode without external API calls:",
     "AIM_GATEWAY_MODE=mock"
@@ -387,7 +422,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
       const bodyText = await readRequestBody(request);
       const requestBody = safeJson(bodyText) ?? {};
       const budget = readBudget();
-      const summary = await readGatewaySummary();
+      const summary = await readGatewaySummary({ windowMs: budgetWindowMs() });
       // Compress the request body once (safe, lossless-by-construction). Disable with AIM_COMPRESS=off.
       const compressionOn = (process.env.AIM_COMPRESS ?? "on").toLowerCase() !== "off";
       let forwardBody = bodyText;
@@ -406,7 +441,14 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
           };
         }
       }
-      if (budget !== null && summary.estimatedCostUsd >= budget) {
+      // Pre-call cap: price THIS request from its own tokens and block before
+      // forwarding if (already spent in the window + this call) would exceed the
+      // cap. Catches both accumulated overspend and a single oversized call.
+      const preCall = estimateRequestCost(requestBody);
+      const callEstimate = preCall.estimatedUsd ?? 0;
+      const projectedCostUsd = Number((summary.estimatedCostUsd + callEstimate).toFixed(6));
+      if (budget !== null && projectedCostUsd > budget) {
+        const blockedByThisCall = summary.estimatedCostUsd < budget;
         const event = {
           at: new Date().toISOString(),
           path: url.pathname,
@@ -416,12 +458,24 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
           usage: null,
           cost: null,
           truth: "budget_guard",
-          error: `Budget exceeded: ${summary.estimatedCostUsd} >= ${budget}`,
+          guard: {
+            spentUsd: summary.estimatedCostUsd,
+            callEstimateUsd: callEstimate,
+            callEstimateTruth: preCall.truth,
+            projectedUsd: projectedCostUsd,
+            capUsd: budget,
+            blockedByThisCall
+          },
+          error: blockedByThisCall
+            ? `Budget would be exceeded by this call: $${summary.estimatedCostUsd} spent + ~$${callEstimate} this call > cap $${budget}`
+            : `Budget exceeded: ${summary.estimatedCostUsd} >= ${budget}`,
           requestHash: createHash("sha1").update(bodyText).digest("hex")
         };
         await appendGatewayEvent(event);
-        sendJson(response, { error: event.error, truth: event.truth }, 429);
-        const breachText = `Runcap: cap hit. Run blocked at $${summary.estimatedCostUsd} (cap $${budget}) on ${event.model}. The gateway stopped the call before it could spend more.`;
+        sendJson(response, { error: event.error, truth: event.truth, guard: event.guard }, 429);
+        const breachText = blockedByThisCall
+          ? `Runcap: cap protected. Blocked a ~$${callEstimate} call on ${event.model} before it ran ($${summary.estimatedCostUsd} already spent, cap $${budget}).`
+          : `Runcap: cap hit. Run blocked at $${summary.estimatedCostUsd} (cap $${budget}) on ${event.model}. The gateway stopped the call before it could spend more.`;
         sendAlert(breachText)
           .then((channels) => {
             if (channels && channels.length) console.log(`Cap-breach alert sent to: ${channels.join(", ")}`);
@@ -431,7 +485,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
           mission_id: null,
           label: `gateway cap breach (${event.model})`,
           estimate_low: budget,
-          estimate_high: summary.estimatedCostUsd,
+          estimate_high: projectedCostUsd,
           cap: budget,
           actual: summary.estimatedCostUsd,
           capped: true,
@@ -504,7 +558,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
         requestHash: createHash("sha1").update(bodyText).digest("hex")
       });
       if (responseBody.usage) {
-        const spent = await readGatewaySummary();
+        const spent = await readGatewaySummary({ windowMs: budgetWindowMs() });
         syncRun({
           mission_id: null,
           label: "gateway session (actual spend)",
@@ -1173,8 +1227,17 @@ async function readGatewayEvents() {
   return text.split("\n").filter(Boolean).map((line) => safeJson(line)).filter(Boolean);
 }
 
-async function readGatewaySummary() {
-  const events = await readGatewayEvents();
+async function readGatewaySummary({ windowMs } = {}) {
+  const allEvents = await readGatewayEvents();
+  // When a window is given (used by the budget guard), only count spend whose
+  // timestamp falls inside it. The cap is then a per-window budget that resets,
+  // not an all-time counter that locks the gateway forever.
+  const events = windowMs
+    ? allEvents.filter((event) => {
+        const t = Date.parse(event.at ?? "");
+        return Number.isFinite(t) && Date.now() - t <= windowMs;
+      })
+    : allEvents;
   const successful = events.filter((event) => event.status >= 200 && event.status < 300);
   const totalTokens = events.reduce((sum, event) => {
     const u = event.usage;
@@ -1205,13 +1268,42 @@ async function readGatewaySummary() {
     truth: events.some((event) => event.truth === "provider_usage" || event.truth === "mock_provider_usage")
       ? "usage_plus_static_price_table"
       : "unknown",
+    windowMs: windowMs ?? null,
     recent: events.slice(-20).reverse()
   };
 }
 
+// How wide the budget window is, in ms. AIM_BUDGET_WINDOW controls it:
+//   "day" (default) → rolling 24h, "session" → since gateway start, "all" → no reset.
+const GATEWAY_STARTED_AT = Date.now();
+function budgetWindowMs() {
+  const mode = (process.env.AIM_BUDGET_WINDOW ?? "day").toLowerCase();
+  if (mode === "all") return undefined;
+  if (mode === "session") return Date.now() - GATEWAY_STARTED_AT;
+  const hours = Number(mode);
+  if (Number.isFinite(hours) && hours > 0) return hours * 60 * 60 * 1000;
+  return 24 * 60 * 60 * 1000; // "day" default
+}
+
+// The cap value. Precedence: AIM_DAILY_BUDGET_USD env > persisted budget.json
+// (written by `runcap plan` / `runcap cap`). Null means no cap is set.
 function readBudget() {
   const raw = process.env.AIM_DAILY_BUDGET_USD;
-  if (raw === undefined || raw === "") return null;
+  if (raw !== undefined && raw !== "") {
+    const value = Number(raw);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  const stored = readStoredBudget();
+  return stored;
+}
+
+function readStoredBudget() {
+  if (!existsSync(BUDGET_FILE)) return null;
+  let text = null;
+  try { text = readFileSync(BUDGET_FILE, "utf8"); } catch { return null; }
+  const parsed = safeJson(text);
+  const raw = parsed?.capUsd;
+  if (raw === null || raw === undefined || raw === "") return null;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
@@ -1325,6 +1417,43 @@ function estimateApiCost(usage, model) {
       verified: PRICE_TABLE_VERIFIED,
       cachedInputTokens: cachedInput
     }
+  };
+}
+
+// Estimate the cost of a request BEFORE it is forwarded upstream, from the
+// request body alone. Input tokens are estimated from the serialized prompt;
+// output tokens from the caller's max_tokens (the worst case the provider can
+// bill). Returns null when the model has no verified price, so the guard can
+// decide whether to fail open or closed rather than guessing a number.
+function estimateRequestCost(requestBody) {
+  const model = requestBody?.model ?? "";
+  const pricing = modelPricing(model);
+  if (!pricing) return { estimatedUsd: null, truth: "unknown_price", model };
+
+  const promptText = JSON.stringify(
+    requestBody.messages ?? requestBody.system ?? requestBody.input ?? requestBody.prompt ?? ""
+  );
+  const inputTokens = estimateTokens(promptText);
+  // Worst-case output the provider could bill: honor the caller's stated cap,
+  // else assume a generous default so the guard is not fooled by an open-ended call.
+  const maxOutput = Number(
+    requestBody.max_tokens ??
+    requestBody.max_completion_tokens ??
+    requestBody.max_output_tokens ??
+    4096
+  );
+  const outputTokens = Number.isFinite(maxOutput) && maxOutput > 0 ? maxOutput : 4096;
+
+  const estimatedUsd =
+    (inputTokens / 1_000_000) * pricing.inputPerMillion +
+    (outputTokens / 1_000_000) * pricing.outputPerMillion;
+
+  return {
+    estimatedUsd: Number(estimatedUsd.toFixed(6)),
+    truth: "pre_call_estimate_from_request",
+    model,
+    inputTokens,
+    outputTokens
   };
 }
 

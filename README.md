@@ -28,6 +28,16 @@ Runcap does **not** promise an exact cost oracle. Agent trajectories are stochas
 
 The range is the headline. The hard cap is the product.
 
+## Who this is for
+
+Runcap is a developer tool. It works by running a local gateway that your agent's API calls pass through, so it can price and cap them before they reach the paid provider. That means you need three things already in place:
+
+- **Your own provider API key** (OpenAI or Anthropic). Runcap does not sell or supply model access.
+- **Your own agent** - Claude Code, Codex, or any script that calls the OpenAI/Anthropic API.
+- **Comfort running a CLI** and a local process on your machine.
+
+If you have those, Runcap caps your spend in one command. If you are looking for a no-account web app that runs the AI for you, this is not that - it is a circuit breaker for a setup you already own.
+
 ## 60-second demo
 
 No API key required.

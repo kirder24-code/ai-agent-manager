@@ -36,7 +36,7 @@ const args = process.argv.slice(2);
 const command = args[0] ?? "welcome";
 
 function usage() {
-  console.log(`Runcap — cap every agent run before it starts
+  console.log(`Runcap: cap every agent run before it starts
 
 Usage:
   runcap run [--label name] [--cap|--no-cap] [--mock] -- <command...>
@@ -90,6 +90,16 @@ function takeFlag(input, name) {
   return true;
 }
 
+// A real call can cost a fraction of a cent. toFixed(2)/(4) would print $0.00 or
+// $0.0000 and read as "nothing was recorded", so show a meaningful figure for
+// sub-cent spend instead of rounding a real charge down to zero.
+function fmtUsd(n) {
+  if (!(n > 0)) return "$0.00";
+  if (n >= 0.01) return `$${n.toFixed(2)}`;
+  if (n >= 0.0001) return `$${n.toFixed(4)}`;
+  return `$${n.toPrecision(2)}`;
+}
+
 try {
   if (command === "welcome") {
     console.log(await welcome());
@@ -125,7 +135,7 @@ try {
     if (result.capSummary) {
       const c = result.capSummary;
       const capLine = c.capUsd === null ? "no cap" : `cap $${c.capUsd.toFixed(2)}`;
-      console.log(`\nRuncap: cap enforced (${capLine}). This run spent ~$${c.spentThisRunUsd.toFixed(4)} (window total $${c.spentWindowUsd.toFixed(4)}).`);
+      console.log(`\nRuncap: cap enforced (${capLine}). This run spent ~${fmtUsd(c.spentThisRunUsd)} (window total ${fmtUsd(c.spentWindowUsd)}).`);
     }
   } else if (command === "preflight") {
     const runArgs = args.slice(1);

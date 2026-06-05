@@ -247,6 +247,16 @@ export async function planMission(goal, options = {}) {
 
 // Persist a hard cap to .runcap/budget.json so the gateway enforces it without
 // the user manually exporting AIM_DAILY_BUDGET_USD. env still wins if set.
+// Show a meaningful figure for sub-cent spend; a real call can cost a fraction
+// of a cent, and rounding it to $0.00 reads as "nothing was recorded".
+function fmtUsd(n) {
+  const v = Number(n);
+  if (!(v > 0)) return "$0.00";
+  if (v >= 0.01) return `$${v.toFixed(2)}`;
+  if (v >= 0.0001) return `$${v.toFixed(4)}`;
+  return `$${v.toPrecision(2)}`;
+}
+
 export async function setBudgetCap(capUsd, { source = "manual" } = {}) {
   await ensureStore();
   const value = Number(capUsd);
@@ -413,7 +423,7 @@ export async function welcome() {
       "  runcap run -- codex \"...\"      runcap run -- python my_agent.py",
       "",
       gateway.callCount > 0
-        ? `Spent so far this ${window}: $${gateway.estimatedCostUsd.toFixed(4)} across ${gateway.callCount} calls. See: runcap status`
+        ? `Spent so far this ${window}: ${fmtUsd(gateway.estimatedCostUsd)} across ${gateway.callCount} calls. See: runcap status`
         : "No calls recorded yet. Your first `runcap run` will show the spend."
     ];
   }

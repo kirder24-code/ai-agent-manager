@@ -131,7 +131,7 @@ export async function alertsCommand(args) {
   if (sub === "test") {
     const license = await readLicense();
     if (!license) return "Alerts are Pro-only. Run `runcap login <key>` first.";
-    const results = await sendAlert("Runcap test alert — your cap-breach notifications are working.");
+    const results = await sendAlert("Runcap test alert: your cap-breach notifications are working.");
     if (!results) return "No channels configured. Add one with `runcap alerts add ...`.";
     return `Test sent to: ${results.join(", ")}`;
   }

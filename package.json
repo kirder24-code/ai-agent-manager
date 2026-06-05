@@ -1,6 +1,6 @@
 {
   "name": "runcap",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Cap every agent run before it starts: estimate cost, set a hard ceiling that stops the run, rescue stuck agents. Local, MIT, nothing uploaded.",
   "license": "MIT",
   "type": "module",
@@ -34,8 +34,8 @@
     "LICENSE"
   ],
   "bin": {
-    "runcap": "./bin/runcap.mjs",
-    "aim": "./bin/runcap.mjs"
+    "runcap": "bin/runcap.mjs",
+    "aim": "bin/runcap.mjs"
   },
   "scripts": {
     "setup": "node ./bin/runcap.mjs setup",

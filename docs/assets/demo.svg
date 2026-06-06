@@ -16,7 +16,7 @@
     <circle cx="26" cy="28" r="6" fill="#f87171"/>
     <circle cx="48" cy="28" r="6" fill="#fbbf24"/>
     <circle cx="70" cy="28" r="6" fill="#34d399"/>
-    <text x="100" y="33" fill="#8a8a8a" font-family="'JetBrains Mono',monospace" font-size="14">runcap — estimate · cap · compress · rescue</text>
+    <text x="100" y="33" fill="#8a8a8a" font-family="'JetBrains Mono',monospace" font-size="14">runcap · estimate · cap · compress · rescue</text>
     <text x="770" y="33" fill="url(#brand)" font-family="'JetBrains Mono',monospace" font-weight="700" font-size="15">run·cap</text>
   </g>
   <line x1="0" y1="50" x2="920" y2="50" stroke="#1c1c1f"/>
@@ -60,10 +60,10 @@
   <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.575;0.606;0.97;1" dur="8s" repeatCount="indefinite"/>
   <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.575;0.606;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
   → compressed 1,260 tokens   (JSON + logs trimmed, prose untouched)</text>
-<text x="28" y="348" fill="#d4d4d4" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
+<text x="28" y="348" fill="#22d3ee" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="14" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.588;0.619;0.97;1" dur="8s" repeatCount="indefinite"/>
   <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.588;0.619;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
-  </text>
+  → re-read after edit: 1,186 → 737 tokens   (delta-encoded, lossless. no other proxy does this)</text>
 <text x="28" y="375" fill="#22d3ee" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.675;0.706;0.97;1" dur="8s" repeatCount="indefinite"/>
   <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.675;0.706;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
@@ -79,5 +79,5 @@
 <text x="28" y="456" fill="#f87171" font-family="'JetBrains Mono','SF Mono',Menlo,monospace" font-size="16.5" opacity="0">
   <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.850;0.881;0.97;1" dur="8s" repeatCount="indefinite"/>
   <animateTransform attributeName="transform" type="translate" values="10 0;10 0;0 0;0 0;0 0" keyTimes="0;0.850;0.881;0.97;1" dur="8s" repeatCount="indefinite" additive="sum"/>
-  HTTP 429  budget_guard  — run stopped before money left your account</text>
+  HTTP 429  budget_guard  ·  run stopped before money left your account</text>
 </svg>

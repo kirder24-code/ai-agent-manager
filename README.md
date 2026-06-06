@@ -4,15 +4,21 @@
 
 ![Runcap terminal demo: estimate, cap, compress, stop](docs/assets/demo.svg)
 
-**Know what your coding agent will cost before you build it, and set a hard ceiling so it never surprises you.**
+**Your AI coding agent re-reads the same files over and over and quietly burns your money. Runcap estimates the bill before you build, hard-caps the spend so it physically stops at your ceiling, and losslessly compresses every call. Free, MIT, 100% local. Your code and tokens never touch a server.**
 
-Runcap estimates the cost of an agent run as a range, enforces a hard spend ceiling that physically stops the run, and when the agent gets stuck it hands you the exact rescue prompt. Free, MIT, 100% local. Your code and tokens never touch a server.
+On a real OpenAI call, one edited-file re-read dropped from **1,186 to 737 prompt tokens (37.9% saved)** with the model still answering correctly about the changed line. No other proxy does this:
+
+| | Without Runcap | With Runcap |
+|---|---|---|
+| Re-read of an edited file | 1,186 prompt tokens | **737 prompt tokens** |
+| You find out the cost | when the invoice arrives | **before you press go, capped at your ceiling** |
+| When the agent gets stuck | it keeps spending | **run stops, you get the exact rescue prompt** |
 
 > Every other tool here is a rear-view mirror - it shows you the bill *after* you paid it. Runcap estimates the bill *before* you start and caps it. It is a circuit breaker, not a dashboard.
 
 ## Why
 
-Multi-agent coding runs burn roughly **15x more tokens** than a single chat ([Anthropic engineering](https://www.anthropic.com/engineering/built-multi-agent-research-system)). Agents loop on the same error, rewrite plans, and hand you a confident summary while the task is not actually done. You find out what it cost when the invoice - or the subscription limit - arrives.
+**Agents loop on the same error, rewrite plans, and re-read files they just edited - every loop is tokens you pay for.** Multi-agent coding runs burn roughly **15x more tokens** than a single chat ([Anthropic engineering](https://www.anthropic.com/engineering/built-multi-agent-research-system)). They hand you a confident summary while the task is not actually done, and you find out what it cost when the invoice - or the subscription limit - arrives.
 
 Observability tools (Langfuse, Helicone, LangSmith, AgentOps) measure the past. Gateways (LiteLLM, Portkey, OpenRouter) route the present. None of them stop the spend *before* it happens. Runcap does the one thing the rear-view mirror can't:
 

@@ -18,15 +18,105 @@
 // "X tokens saved by compression". Token counts are an estimate (~4 chars/token),
 // labeled `estimated`, never claimed as provider-exact.
 
+import { createHash } from "node:crypto";
+
 const CHARS_PER_TOKEN = 4;
 const MIN_FIELD_CHARS = 200; // below this, compression overhead isn't worth it
+const MIN_DEDUP_CHARS = 256; // only dedup blocks big enough to be worth a stub
 const LOG_HEAD_LINES = 12;
 const LOG_TAIL_LINES = 8;
 const LOG_COLLAPSE_THRESHOLD = 40; // collapse runs longer than this
 
+// --- delta-encoding of near-duplicate blocks ---
+// When a block is similar (not identical) to one seen earlier in the same
+// request, we replace it with a line-diff against the original. This is the
+// case identical-dedup misses: an agent re-reads a file AFTER editing it.
+// Lossless: the exact text is recoverable from (original block + diff).
+const DELTA_MIN_SIMILARITY = 0.5; // below this a diff isn't smaller than the original
+const DELTA_MAX_LINES = 2500; // LCS is O(n*m); above ~2500 lines a diff can cost >25ms, so skip to protect the hot path
+
 export function estimateTokens(text) {
   if (!text) return 0;
   return Math.ceil(String(text).length / CHARS_PER_TOKEN);
+}
+
+function shortHash(text) {
+  return createHash("sha1").update(text).digest("hex").slice(0, 8);
+}
+
+// Cheap line-overlap ratio. Used only to decide whether a full LCS diff is
+// worth computing; the real saving is measured against the emitted delta.
+function lineSimilarity(aLines, bLines) {
+  const aSet = new Set(aLines);
+  let shared = 0;
+  for (const l of bLines) if (aSet.has(l)) shared++;
+  return shared / Math.max(aLines.length, bLines.length, 1);
+}
+
+// LCS-based line diff. Emits a compact op list of CHANGES only:
+//   { at: <line index in the original>, del: <lines removed>, ins: [<lines added>] }
+// Unchanged ranges are implied. Reconstruction walks the original applying ops.
+function lineDiff(aLines, bLines) {
+  const n = aLines.length, m = bLines.length;
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = aLines[i] === bLines[j]
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0, j = 0, cur = null;
+  const flush = () => { if (cur) { ops.push(cur); cur = null; } };
+  while (i < n && j < m) {
+    if (aLines[i] === bLines[j]) { flush(); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      if (!cur || cur.at !== i) { flush(); cur = { at: i, del: 0, ins: [] }; }
+      cur.del++; i++;
+    } else {
+      if (!cur) cur = { at: i, del: 0, ins: [] };
+      cur.ins.push(bLines[j]); j++;
+    }
+  }
+  while (i < n) { if (!cur || cur.at !== i) { flush(); cur = { at: i, del: 0, ins: [] }; } cur.del++; i++; }
+  if (j < m) { if (!cur) cur = { at: i, del: 0, ins: [] }; while (j < m) cur.ins.push(bLines[j++]); }
+  flush();
+  return ops;
+}
+
+// Exact inverse of lineDiff: (original lines + ops) -> reconstructed string.
+// Walks ops in order (they are emitted sorted by `at`), copying untouched
+// original lines up to each op's anchor, then applying the op's deletes/inserts.
+// Order-based, so duplicate `at` values across ops are handled correctly.
+// Kept in-module so tests can prove losslessness against the real code path.
+export function applyLineDiff(aLines, ops) {
+  const out = [];
+  let i = 0; // cursor into aLines
+  for (const op of ops) {
+    while (i < op.at && i < aLines.length) { out.push(aLines[i]); i++; }
+    for (const ins of op.ins) out.push(ins);
+    i += op.del;
+  }
+  while (i < aLines.length) { out.push(aLines[i]); i++; }
+  return out.join("\n");
+}
+
+// Render a delta as a block the MODEL can read and apply in its head. The header
+// names the base (sha + which message it first appeared in) so the model knows
+// what to patch; each op is shown as removed/added lines at a 1-based line number.
+function renderDelta(baseHash, firstIndex, ops) {
+  const lines = [
+    `[runcap delta vs the identical block first seen in message ${firstIndex + 1} (sha:${baseHash}).`,
+    ` Reconstruct the current text by applying these line changes to that block; all other lines are unchanged.]`
+  ];
+  for (const op of ops) {
+    const at1 = op.at + 1;
+    if (op.del > 0) lines.push(`@@ line ${at1}: remove ${op.del} line(s)`);
+    else lines.push(`@@ line ${at1}: insert`);
+    for (const ins of op.ins) lines.push(`+ ${ins}`);
+  }
+  return lines.join("\n");
 }
 
 // Re-serialize an embedded JSON string compactly. Handles two shapes safely:
@@ -109,6 +199,120 @@ function compressField(value) {
   return out;
 }
 
+// Deduplicate identical content blocks within a single request. In a long
+// agentic session the same file dump or tool_result ships as a fresh block on
+// every turn (the agent re-reads auth.ts five times); the model already saw
+// those exact bytes earlier in the SAME request, so replacing the repeats with
+// a deterministic stub is lossless-by-construction. This is where the real
+// savings on agentic traffic live — per-field whitespace/JSON trimming barely
+// moves the needle by comparison.
+//
+// Walks messages in order. The first occurrence of a block is kept verbatim;
+// any later block with the same content hash becomes:
+//   [runcap: identical content seen at message N, sha:abcd1234]
+// We only dedup blocks >= MIN_DEDUP_CHARS so a tiny stub never costs more than
+// the original. Mutates the message tree in place on the already-cloned `next`.
+function dedupRepeatedBlocks(body) {
+  let saved = 0;
+  let blocks = 0;
+  let deltas = 0;
+  // hash -> { index, text, lines } for the first occurrence of each block.
+  const seen = new Map();
+  // Ordered list of prior blocks, for near-duplicate (delta) matching.
+  const priors = [];
+
+  const stubFor = (hash, firstIndex) =>
+    `[runcap: identical content seen at message ${firstIndex + 1}, sha:${hash}]`;
+
+  // Try to encode `text` as a delta against the most similar prior block.
+  // Returns the delta string if it is smaller than the original, else null.
+  const tryDelta = (text) => {
+    const bLines = text.split("\n");
+    if (bLines.length > DELTA_MAX_LINES) return null; // protect the hot path
+    let best = null;
+    for (const p of priors) {
+      if (p.lines.length > DELTA_MAX_LINES) continue;
+      const sim = lineSimilarity(p.lines, bLines);
+      if (sim < DELTA_MIN_SIMILARITY) continue;
+      if (!best || sim > best.sim) best = { ...p, sim };
+    }
+    if (!best) return null;
+    const ops = lineDiff(best.lines, bLines);
+    // Safety: only emit if it reconstructs exactly (lossless-by-construction).
+    if (applyLineDiff(best.lines, ops) !== text) return null;
+    const rendered = renderDelta(best.hash, best.index, ops);
+    return rendered.length < text.length ? rendered : null;
+  };
+
+  const dedupString = (text, msgIndex) => {
+    if (typeof text !== "string" || text.length < MIN_DEDUP_CHARS) return text;
+    const hash = shortHash(text);
+    const firstSeen = seen.get(hash);
+    if (firstSeen === undefined) {
+      // First time we see this exact block. Try a delta vs an earlier *similar*
+      // block before recording it as a fresh original.
+      const delta = tryDelta(text);
+      const record = { index: msgIndex, hash, text, lines: text.split("\n") };
+      seen.set(hash, record);
+      priors.push(record);
+      if (delta !== null) {
+        saved += text.length - delta.length;
+        blocks += 1;
+        deltas += 1;
+        return delta;
+      }
+      return text;
+    }
+    const stub = stubFor(hash, firstSeen.index);
+    if (stub.length >= text.length) return text;
+    saved += text.length - stub.length;
+    blocks += 1;
+    return stub;
+  };
+
+  const dedupContent = (content, msgIndex) => {
+    if (typeof content === "string") return dedupString(content, msgIndex);
+    if (Array.isArray(content)) {
+      return content.map((part) => {
+        if (!part || typeof part !== "object") return part;
+        // OpenAI/Anthropic text parts
+        if (typeof part.text === "string") {
+          return { ...part, text: dedupString(part.text, msgIndex) };
+        }
+        // Anthropic tool_result blocks: content can be string or array of parts
+        if (part.type === "tool_result") {
+          if (typeof part.content === "string") {
+            return { ...part, content: dedupString(part.content, msgIndex) };
+          }
+          if (Array.isArray(part.content)) {
+            return {
+              ...part,
+              content: part.content.map((c) =>
+                c && typeof c === "object" && typeof c.text === "string"
+                  ? { ...c, text: dedupString(c.text, msgIndex) }
+                  : c
+              )
+            };
+          }
+        }
+        return part;
+      });
+    }
+    return content;
+  };
+
+  let next = body;
+  if (Array.isArray(body.messages)) {
+    next = {
+      ...body,
+      messages: body.messages.map((m, i) =>
+        m && typeof m === "object" && "content" in m ? { ...m, content: dedupContent(m.content, i) } : m
+      )
+    };
+  }
+  return { body: next, saved, blocks, deltas };
+}
+
 // Walk an OpenAI- or Anthropic-shaped request body and compress message content.
 // Returns { body, before, after, savedChars, savedTokens, touched }.
 export function compressRequestBody(body) {
@@ -156,6 +360,12 @@ export function compressRequestBody(body) {
     next = { ...next, input: compressContent(next.input) };
   }
 
+  // Cross-message dedup of identical blocks + delta-encoding of near-duplicates
+  // (the big win on agentic traffic: re-reads after an edit).
+  const deduped = dedupRepeatedBlocks(next);
+  next = deduped.body;
+  touched += deduped.blocks;
+
   const measureAfter = JSON.stringify(next).length;
   const savedChars = Math.max(0, measureBefore - measureAfter);
   return {
@@ -164,6 +374,7 @@ export function compressRequestBody(body) {
     after: measureAfter,
     savedChars,
     savedTokens: Math.round(savedChars / CHARS_PER_TOKEN),
-    touched
+    touched,
+    deltas: deduped.deltas
   };
 }

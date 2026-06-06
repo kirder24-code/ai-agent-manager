@@ -125,7 +125,13 @@ When spend crosses the ceiling, the next call returns `429 budget_guard` instead
 
 ## Token compression (built in, no extra deps)
 
-Every request that passes through the gateway is compressed before it's forwarded: embedded JSON is re-serialized compactly, long log/stack-trace dumps are collapsed to head + tail, and trailing whitespace is squeezed. This is **lossless by construction** - your prose instructions and code semantics are never altered, only machine "garbage" is trimmed. It's pure Node with **zero ML or native dependencies**, so it installs everywhere without the build pain heavier compressors have.
+Every request that passes through the gateway is compressed before it's forwarded. Three layers, all **lossless by construction** - your prose instructions and code semantics are never altered, only machine "garbage" is trimmed:
+
+1. **Per-field trim** - embedded JSON re-serialized compactly, long log/stack-trace dumps collapsed to head + tail, trailing whitespace squeezed.
+2. **Identical-block dedup** - when the exact same file dump or tool_result ships again in the same request, the repeat is replaced with a deterministic stub.
+3. **Delta-encoding of near-duplicates** - the layer no other proxy has. When the agent reads a file, edits one line, and re-reads it, the block is *similar but not identical*, so plain dedup saves nothing. Runcap sends a readable line-diff against the version the model already saw, and the model reconstructs the current file from it. On a real OpenAI call, an edited-file re-read dropped from **1186 to 737 prompt tokens - 37.9% saved, with the model still answering correctly about the changed line.** Proof and reproduction steps: [docs/delta-encoding-evidence.md](https://github.com/kirder24-code/ai-agent-manager/blob/main/docs/delta-encoding-evidence.md).
+
+It's pure Node with **zero ML or native dependencies**, so it installs everywhere without the build pain heavier compressors have.
 
 The dashboard shows the result as one number: **"You saved $X · N tokens compressed · would have spent $Y."** Disable it with `AIM_COMPRESS=off` if you ever want raw passthrough.
 

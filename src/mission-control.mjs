@@ -561,6 +561,7 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
             beforeChars: c.before,
             afterChars: c.after,
             fieldsTouched: c.touched,
+            deltas: c.deltas ?? 0,
             truth: "estimated"
           };
         }

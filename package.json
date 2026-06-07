@@ -1,6 +1,6 @@
 {
   "name": "runcap",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Cap every agent run before it starts: estimate cost, set a hard ceiling that stops the run, rescue stuck agents. Local, MIT, nothing uploaded.",
   "license": "MIT",
   "type": "module",

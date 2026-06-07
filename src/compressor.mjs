@@ -46,7 +46,7 @@ function shortHash(text) {
 
 // Cheap line-overlap ratio. Used only to decide whether a full LCS diff is
 // worth computing; the real saving is measured against the emitted delta.
-function lineSimilarity(aLines, bLines) {
+export function lineSimilarity(aLines, bLines) {
   const aSet = new Set(aLines);
   let shared = 0;
   for (const l of bLines) if (aSet.has(l)) shared++;
@@ -376,5 +376,61 @@ export function compressRequestBody(body) {
     savedTokens: Math.round(savedChars / CHARS_PER_TOKEN),
     touched,
     deltas: deduped.deltas
+  };
+}
+
+// --- loop / circling detection (the "looks productive but stuck" signal) ---
+// The gateway sees every request the agent sends. An agent that is circling the
+// same failure with reworded attempts sends prompts that are SIMILAR-but-not-
+// identical turn after turn: the conversation tail barely moves while tokens
+// keep burning. Plain hashing misses this (the text differs slightly each loop);
+// this catches it with the same line-similarity primitive the delta-encoder uses.
+const LOOP_SIMILARITY = 0.92; // two consecutive prompts this similar = no real progress made between them
+const LOOP_MIN_REPEATS = 3;   // how many near-identical prompts in a row before we warn
+
+// Pull the comparable "shape" of a request: the concatenated text the agent is
+// actually sending this turn (messages / input / system), order-preserving.
+export function requestShapeText(body) {
+  if (!body || typeof body !== "object") return "";
+  const parts = [];
+  const push = (content) => {
+    if (typeof content === "string") parts.push(content);
+    else if (Array.isArray(content)) {
+      for (const p of content) if (p && typeof p === "object" && typeof p.text === "string") parts.push(p.text);
+    }
+  };
+  if (Array.isArray(body.messages)) for (const m of body.messages) if (m && typeof m === "object") push(m.content);
+  if (body.system !== undefined) push(body.system);
+  if (typeof body.input === "string") push(body.input);
+  return parts.join("\n");
+}
+
+// Given the current request and a rolling history of prior request shapes,
+// decide whether the agent is circling. Returns { looping, repeats, similarity }.
+// History is oldest->newest of prior requestShapeText() strings in this session.
+export function detectLoop(currentShape, history, {
+  similarityThreshold = LOOP_SIMILARITY,
+  minRepeats = LOOP_MIN_REPEATS
+} = {}) {
+  if (!currentShape || !Array.isArray(history) || history.length === 0) {
+    return { looping: false, repeats: 0, similarity: 0 };
+  }
+  const curLines = String(currentShape).split("\n");
+  let repeats = 0;
+  let lastSimilarity = 0;
+  // Walk backward through history; count the unbroken run of near-identical turns.
+  for (let i = history.length - 1; i >= 0; i--) {
+    const sim = lineSimilarity(curLines, String(history[i]).split("\n"));
+    if (sim >= similarityThreshold) {
+      repeats += 1;
+      lastSimilarity = sim;
+    } else {
+      break;
+    }
+  }
+  return {
+    looping: repeats >= minRepeats,
+    repeats,
+    similarity: Number(lastSimilarity.toFixed(3))
   };
 }

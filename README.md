@@ -141,6 +141,12 @@ It's pure Node with **zero ML or native dependencies**, so it installs everywher
 
 The dashboard shows the result as one number: **"You saved $X · N tokens compressed · would have spent $Y."** Disable it with `AIM_COMPRESS=off` if you ever want raw passthrough.
 
+## Loop detection (the "looks productive but stuck" signal)
+
+The hard case in stuck-detection is the agent that keeps producing output but is really circling the same failure, just reworded each time. Plain hashing misses it because the prompt is *similar but never byte-identical* between loops. Because the gateway sees every request, Runcap compares each request's conversation shape against the recent run with the same line-similarity primitive the delta-encoder uses: when several prompts in a row are near-identical (default: 3 prompts at 92%+ similarity) while the conversation never moves forward, it flags `loop.looping` on the event, surfaces a warning in `runcap status`, and fires an alert.
+
+This is a **calculated** signal, not a proven dollar-saving: it tells you *"the agent has sent 3 near-identical prompts in a row with no progress"* so you can step in before the loop burns more budget. Tune or disable it with `AIM_LOOP_DETECT=off`. (Today's [`detectStuck`](src/mission-control.mjs) post-run score is outcome-based: exit code, parsed errors, and zero-diff. The loop signal adds the missing in-flight behavioral signal on top of it.)
+
 ## Pricing table
 
 Costs are calculated from a sourced multi-provider table - Anthropic (Opus / Sonnet / Haiku) and OpenAI (GPT-5 family + legacy GPT-4), with cache-read and batch discounts handled - labeled with source and verification date. When a model is unknown, Runcap says `unknown_price` rather than guessing.

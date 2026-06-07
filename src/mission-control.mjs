@@ -7,7 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { syncRun } from "./cloud.mjs";
 import { sendAlert } from "./alerts.mjs";
-import { compressRequestBody, estimateTokens } from "./compressor.mjs";
+import { compressRequestBody, estimateTokens, requestShapeText, detectLoop } from "./compressor.mjs";
 
 const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
@@ -523,6 +523,12 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
   if (gatewayMode !== "mock" && !openaiKey && !anthropicKey) {
     throw new Error("Missing upstream key. Set OPENAI_API_KEY (for /v1/chat/completions) and/or ANTHROPIC_API_KEY (for /v1/messages). The gateway cannot proxy without at least one.");
   }
+  // Rolling history of recent request shapes (per gateway process) so we can
+  // detect an agent circling the same failure with reworded prompts: similar-
+  // but-not-identical turns, which plain hashing never catches.
+  const loopEnabled = (process.env.AIM_LOOP_DETECT ?? "on").toLowerCase() !== "off";
+  const shapeHistory = [];
+  const SHAPE_HISTORY_MAX = 12;
   const server = http.createServer(async (request, response) => {
     const started = Date.now();
     try {
@@ -545,6 +551,17 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
 
       const bodyText = await readRequestBody(request);
       const requestBody = safeJson(bodyText) ?? {};
+      // Loop signal: compare this request's shape against the recent run.
+      let loop = null;
+      if (loopEnabled) {
+        const shape = requestShapeText(requestBody);
+        if (shape) {
+          const result = detectLoop(shape, shapeHistory);
+          loop = { looping: result.looping, repeats: result.repeats, similarity: result.similarity, truth: "calculated" };
+          shapeHistory.push(shape);
+          if (shapeHistory.length > SHAPE_HISTORY_MAX) shapeHistory.shift();
+        }
+      }
       const budget = readBudget();
       const summary = await readGatewaySummary({ windowMs: budgetWindowMs() });
       // Compress the request body once (safe, lossless-by-construction). Disable with AIM_COMPRESS=off.
@@ -591,6 +608,7 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
             capUsd: budget,
             blockedByThisCall
           },
+          loop,
           error: blockedByThisCall
             ? `Budget would be exceeded by this call: $${summary.estimatedCostUsd} spent + ~$${callEstimate} this call > cap $${budget}`
             : `Budget exceeded: ${summary.estimatedCostUsd} >= ${budget}`,
@@ -631,6 +649,7 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
           usage: responseBody.usage,
           cost: estimateApiCost(responseBody.usage, requestBody.model ?? responseBody.model),
           compression,
+          loop,
           truth: "mock_provider_usage",
           requestHash: createHash("sha1").update(bodyText).digest("hex")
         });
@@ -682,9 +701,14 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
         usage: responseBody.usage ?? null,
         cost: estimateApiCost(responseBody.usage, requestBody.model ?? responseBody.model),
         compression,
+        loop,
         truth: responseBody.usage ? "provider_usage" : "unknown",
         requestHash: createHash("sha1").update(bodyText).digest("hex")
       });
+      if (loop && loop.looping) {
+        sendAlert(`Runcap: possible stuck loop. The agent has sent ${loop.repeats} near-identical prompts in a row (${Math.round(loop.similarity * 100)}% similar) without the conversation moving forward. It may be circling the same failure with reworded attempts.`)
+          .catch(() => {});
+      }
       if (responseBody.usage) {
         const spent = await readGatewaySummary({ windowMs: budgetWindowMs() });
         syncRun({
@@ -769,19 +793,23 @@ export async function showStatus(options = {}) {
 
   const gateway = await readGatewaySummary();
   const gatewayLine = `Gateway: ${gateway.callCount} calls, ${gateway.totalTokens} tokens, $${gateway.estimatedCostUsd} estimated (${gateway.truth})`;
+  const loopLine = gateway.loop?.looping
+    ? `Loop warning: last ${gateway.loop.repeats} prompts were ${Math.round(gateway.loop.similarity * 100)}% identical with no progress. The agent may be circling the same failure (truth: calculated).`
+    : null;
   const latest = await latestMissionId();
-  if (!latest) return `${fuelLine}\n${gatewayLine}\nNo missions recorded yet.`;
+  if (!latest) return [fuelLine, gatewayLine, loopLine, "No missions recorded yet."].filter(Boolean).join("\n");
   const mission = await readMission(latest);
   return [
     fuelLine,
     gatewayLine,
+    loopLine,
     `Latest mission: ${mission.id}`,
     `Status: ${mission.stuck.status}`,
     `Exit code: ${mission.exitCode}`,
     `Changed files: ${mission.diffEvidence.changedFiles.length}`,
     `Errors: ${mission.errors.length}`,
     `Report: ${path.join(MISSIONS_DIR, mission.id, "report.md")}`
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export async function recordFuel(value) {
@@ -1419,6 +1447,13 @@ async function readGatewaySummary({ windowMs } = {}) {
     const inputRate = pricing ? pricing.inputPerMillion : 3; // fall back to a mid Sonnet-ish rate
     return sum + (saved * inputRate) / 1_000_000;
   }, 0);
+  // Loop signal: the most recent event that carries a loop verdict tells us
+  // whether the agent is currently circling (similar-but-not-identical prompts
+  // repeated without progress). This is the "looks productive but stuck" case.
+  const lastWithLoop = [...events].reverse().find((event) => event.loop);
+  const loop = lastWithLoop
+    ? { ...lastWithLoop.loop, at: lastWithLoop.at, model: lastWithLoop.model }
+    : { looping: false, repeats: 0, similarity: 0, truth: "calculated" };
   return {
     callCount: events.length,
     successfulCallCount: successful.length,
@@ -1427,6 +1462,7 @@ async function readGatewaySummary({ windowMs } = {}) {
     savedTokens,
     savedUsd: Number(savedUsd.toFixed(6)),
     wouldHaveSpentUsd: Number((estimatedCost + savedUsd).toFixed(6)),
+    loop,
     truth: events.some((event) => event.truth === "provider_usage" || event.truth === "mock_provider_usage")
       ? "usage_plus_static_price_table"
       : "unknown",

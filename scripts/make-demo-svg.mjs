@@ -16,27 +16,28 @@ const C = {
 
 const lines = [
   { t: "$ runcap plan --fuel 24 -- \"build a small auth feature and verify it\"", c: C.prompt, at: 0.3 },
-  { t: "Estimate:  $3 - $7   (range, not an oracle)", c: C.text, at: 1.1 },
-  { t: "Recommended cap:  $10", c: C.ok, at: 1.5 },
-  { t: "", c: C.text, at: 1.6 },
-  { t: "$ ANTHROPIC_BASE_URL=http://127.0.0.1:8792/v1 \\", c: C.prompt, at: 2.2 },
-  { t: "    AIM_DAILY_BUDGET_USD=10 runcap gateway", c: C.prompt, at: 2.6 },
-  { t: "gateway up  ·  compression on  ·  hard cap armed", c: C.dim, at: 3.2 },
-  { t: "", c: C.text, at: 3.3 },
-  { t: "→ request   10,144 tokens", c: C.text, at: 3.9 },
-  { t: "→ compressed 1,260 tokens   (JSON + logs trimmed, prose untouched)", c: C.ok, at: 4.6 },
-  { t: "", c: C.text, at: 4.7 },
-  { t: "You saved $7.40  ·  would have spent $18.40  ·  cap $10", c: C.accent, at: 5.4 },
-  { t: "", c: C.text, at: 5.5 },
-  { t: "→ next call would cross the ceiling", c: C.text, at: 6.1 },
-  { t: "HTTP 429  budget_guard  — run stopped before money left your account", c: C.bad, at: 6.8 }
+  { t: "Estimate:  $3 - $7   (range, not an oracle)", c: C.text, at: 1.0 },
+  { t: "Recommended cap:  $10", c: C.ok, at: 1.4 },
+  { t: "", c: C.text, at: 1.5 },
+  { t: "$ ANTHROPIC_BASE_URL=http://127.0.0.1:8792/v1 \\", c: C.prompt, at: 2.0 },
+  { t: "    AIM_DAILY_BUDGET_USD=10 runcap gateway", c: C.prompt, at: 2.3 },
+  { t: "gateway up  ·  compress on  ·  hard cap armed  ·  loop guard on", c: C.dim, at: 2.9 },
+  { t: "", c: C.text, at: 3.0 },
+  { t: "→ request   10,144 tokens", c: C.text, at: 3.5 },
+  { t: "→ compressed 1,260 tokens   (1,186 → 737 on a real call: 37.9% saved)", c: C.ok, at: 4.1 },
+  { t: "", c: C.text, at: 4.2 },
+  { t: "⚠ loop: last 3 prompts 97.7% identical - agent circling the same fail", c: C.violet, at: 5.0 },
+  { t: "   (looks busy, makes no progress, keeps spending)", c: C.dim, at: 5.5 },
+  { t: "", c: C.text, at: 5.6 },
+  { t: "→ next call would cross the ceiling", c: C.text, at: 6.2 },
+  { t: "HTTP 429  budget_guard  - run stopped before money left your account", c: C.bad, at: 6.9 }
 ];
 
-const W = 920, H = 560;
+const W = 920, H = 588;
 const padX = 28, top = 78, lh = 27, fs = 16.5;
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const total = 8.0; // loop length seconds
+const total = 9.0; // loop length seconds
 const rows = lines.map((ln, i) => {
   const y = top + i * lh;
   // fade+slide in at ln.at, hold, then reset at end of loop
@@ -46,7 +47,7 @@ const rows = lines.map((ln, i) => {
   ${esc(ln.t)}</text>`;
 }).join("\n");
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Runcap terminal demo: plan, cap, compress, stop">
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Runcap terminal demo: plan, cap, compress, detect loop, stop">
   <defs>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#34d399"/>
@@ -64,7 +65,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" wid
     <circle cx="26" cy="28" r="6" fill="#f87171"/>
     <circle cx="48" cy="28" r="6" fill="#fbbf24"/>
     <circle cx="70" cy="28" r="6" fill="#34d399"/>
-    <text x="100" y="33" fill="#8a8a8a" font-family="'JetBrains Mono',monospace" font-size="14">runcap — estimate · cap · compress · rescue</text>
+    <text x="100" y="33" fill="#8a8a8a" font-family="'JetBrains Mono',monospace" font-size="14">runcap · estimate · cap · compress · loop · rescue</text>
     <text x="${W-150}" y="33" fill="url(#brand)" font-family="'JetBrains Mono',monospace" font-weight="700" font-size="15">run·cap</text>
   </g>
   <line x1="0" y1="50" x2="${W}" y2="50" stroke="#1c1c1f"/>

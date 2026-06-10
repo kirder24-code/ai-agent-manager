@@ -7,7 +7,7 @@
 //
 // Pure Node, no test framework. Exits non-zero on any failure so it can gate CI.
 
-import { detectLoop, requestShapeText } from "../src/compressor.mjs";
+import { detectLoop, requestShapeText, responseSignature } from "../src/compressor.mjs";
 
 let failures = 0;
 function check(name, pass, detail) {
@@ -78,6 +78,50 @@ function attempt(wording) {
   const anthropic = requestShapeText({ messages: [{ role: "user", content: [{ type: "text", text: "hello world" }] }] });
   check("requestShapeText normalizes OpenAI and Anthropic content", openai === "hello world" && anthropic === "hello world",
     `openai="${openai}" anthropic="${anthropic}"`);
+}
+
+// --- Test 6: response-side gate — similar prompts but a MOVING error is NOT a loop ---
+// The edge case raised on the thread: a converging run also sends near-identical
+// prompts (same files, same framing) while it closes in on the fix. The tell is
+// the observation: if the error/test output changes between turns, that's
+// progress, not circling. Prompts are near-identical here, but each response
+// carries a DIFFERENT error, so the gate must keep it from being flagged.
+{
+  const history = [attempt("try A"), attempt("try B"), attempt("try C")];
+  const current = attempt("try D");
+  const responseSignatures = [
+    "TypeError: cannot read property 'id' of undefined",
+    "TypeError: cannot read property 'name' of undefined",
+    "ReferenceError: parser is not defined"
+  ];
+  const currentResponseSignature = "AssertionError: expected 200 but got 404";
+  const r = detectLoop(current, history, { responseSignatures, currentResponseSignature });
+  check("similar prompts but MOVING error are NOT flagged (convergence)", !r.looping && r.responseMoved,
+    `looping=${r.looping}, repeats=${r.repeats}, responseMoved=${r.responseMoved}`);
+}
+
+// --- Test 7: response-side gate — similar prompts AND a STUCK error IS a loop ---
+// Same near-identical prompts, but the identical error keeps coming back. Now
+// both signals agree the run is circling, so it must still be flagged.
+{
+  const history = [attempt("try A"), attempt("try B"), attempt("try C")];
+  const current = attempt("try D");
+  const sameError = "TypeError: cannot read property 'id' of undefined";
+  const responseSignatures = [sameError, sameError, sameError];
+  const currentResponseSignature = sameError;
+  const r = detectLoop(current, history, { responseSignatures, currentResponseSignature });
+  check("similar prompts AND stuck error ARE flagged as loop", r.looping && !r.responseMoved && r.repeats >= 3,
+    `looping=${r.looping}, repeats=${r.repeats}, responseMoved=${r.responseMoved}`);
+}
+
+// --- Test 8: responseSignature extracts the error/text from both provider shapes ---
+{
+  const openai = responseSignature({ choices: [{ message: { content: "boom: it failed" } }] });
+  const anthropic = responseSignature({ content: [{ type: "text", text: "boom: it failed" }] });
+  const errEnvelope = responseSignature({ error: { message: "rate limited" } });
+  check("responseSignature reads OpenAI, Anthropic, and error shapes",
+    openai === "boom: it failed" && anthropic === "boom: it failed" && errEnvelope === "rate limited",
+    `openai="${openai}" anthropic="${anthropic}" err="${errEnvelope}"`);
 }
 
 console.log("\n" + (failures === 0 ? "ALL LOOP TESTS PASSED" : `${failures} LOOP TEST(S) FAILED`));

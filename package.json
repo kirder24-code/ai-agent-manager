@@ -1,6 +1,6 @@
 {
   "name": "runcap",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Cap every agent run before it starts: estimate cost, set a hard ceiling that stops the run, rescue stuck agents. Local, MIT, nothing uploaded.",
   "license": "MIT",
   "type": "module",
@@ -45,7 +45,7 @@
     "acceptance": "node ./scripts/acceptance.mjs",
     "smoke": "node ./bin/runcap.mjs run --label smoke -- npm --prefix examples/broken-ts-app run build",
     "demo:broken": "node ./bin/runcap.mjs run --label broken-ts-demo -- npm --prefix examples/broken-ts-app run build",
-    "test": "node ./scripts/delta-test.mjs && node ./scripts/loop-test.mjs && node ./scripts/validate-demo.mjs",
+    "test": "node ./scripts/delta-test.mjs && node ./scripts/loop-test.mjs && node ./scripts/loop-e2e.mjs && node ./scripts/validate-demo.mjs",
     "test:delta": "node ./scripts/delta-test.mjs",
     "test:loop": "node ./scripts/loop-test.mjs",
     "status": "node ./bin/runcap.mjs status",

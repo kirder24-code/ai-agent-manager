@@ -405,32 +405,100 @@ export function requestShapeText(body) {
   return parts.join("\n");
 }
 
+// Pull the "did the work move?" signal out of an upstream RESPONSE. Similar
+// prompts alone can't tell circling from convergence: a run closing in on a fix
+// also sends near-identical prompts turn after turn. The tell is whether the
+// observation changed - the error/test output coming back. We reduce a response
+// to the assistant's returned text (plus any explicit error), which carries the
+// error/stack/test signature the next prompt is reacting to.
+export function responseSignature(body) {
+  if (!body || typeof body !== "object") return "";
+  const parts = [];
+  const push = (content) => {
+    if (typeof content === "string") parts.push(content);
+    else if (Array.isArray(content)) {
+      for (const p of content) if (p && typeof p === "object" && typeof p.text === "string") parts.push(p.text);
+    }
+  };
+  // OpenAI chat: choices[].message.content
+  if (Array.isArray(body.choices)) {
+    for (const ch of body.choices) {
+      if (ch && typeof ch === "object" && ch.message) push(ch.message.content);
+    }
+  }
+  // Anthropic messages: content blocks at top level
+  if (Array.isArray(body.content)) push(body.content);
+  // Provider error envelopes (OpenAI {error:{message}}, Anthropic {error:{message}})
+  if (body.error) {
+    if (typeof body.error === "string") parts.push(body.error);
+    else if (typeof body.error.message === "string") parts.push(body.error.message);
+  }
+  return parts.join("\n");
+}
+
 // Given the current request and a rolling history of prior request shapes,
 // decide whether the agent is circling. Returns { looping, repeats, similarity }.
 // History is oldest->newest of prior requestShapeText() strings in this session.
+//
+// Prompt similarity is the cheap pre-filter. When response signatures are
+// available it becomes a GATE, not the verdict: a run only counts as circling
+// when the prompts are near-identical AND the upstream response did not move
+// (same error/output signature). A converging run sends similar prompts but the
+// observation shifts, so it passes. Pass responseSignatures (oldest->newest,
+// aligned with history) and currentResponseSignature to enable the gate; omit
+// them and detection falls back to prompt-similarity-only (prior behavior).
 export function detectLoop(currentShape, history, {
   similarityThreshold = LOOP_SIMILARITY,
-  minRepeats = LOOP_MIN_REPEATS
+  minRepeats = LOOP_MIN_REPEATS,
+  responseSignatures = null,
+  currentResponseSignature = null,
+  responseMovedThreshold = LOOP_SIMILARITY
 } = {}) {
   if (!currentShape || !Array.isArray(history) || history.length === 0) {
-    return { looping: false, repeats: 0, similarity: 0 };
+    return { looping: false, repeats: 0, similarity: 0, responseMoved: false };
   }
   const curLines = String(currentShape).split("\n");
+  const haveResponses = Array.isArray(responseSignatures) && currentResponseSignature != null;
   let repeats = 0;
   let lastSimilarity = 0;
-  // Walk backward through history; count the unbroken run of near-identical turns.
+  let responseMoved = false;
+
+  // Response-side gate. Prompt similarity alone can't separate circling from
+  // convergence: a run closing in on a fix also sends near-identical prompts.
+  // The tell is the observation - the error/output coming back. A change in the
+  // response between consecutive turns is progress, and it breaks the run the
+  // same way a dissimilar prompt does. So we walk backward counting only the
+  // trailing turns that are BOTH prompt-similar AND error-stuck; the first turn
+  // where the prompt differs OR the response moved ends the run. This means a
+  // run that made progress and THEN got stuck on one error still flags once it
+  // has circled that same error long enough. With no response data we fall back
+  // to prompt-similarity-only (prior behavior).
+  //
+  // Responses, newest->oldest: currentResponseSignature (what the current prompt
+  // is reacting to), then responseSignatures[N-1], [N-2], ... A "stuck" step
+  // between turn i and the next-newer turn means their responses match.
+  let newerResp = haveResponses ? currentResponseSignature : null;
   for (let i = history.length - 1; i >= 0; i--) {
     const sim = lineSimilarity(curLines, String(history[i]).split("\n"));
-    if (sim >= similarityThreshold) {
-      repeats += 1;
-      lastSimilarity = sim;
-    } else {
-      break;
+    if (sim < similarityThreshold) break;
+    if (haveResponses) {
+      const olderResp = responseSignatures[i];
+      const haveBoth = olderResp != null && newerResp != null &&
+        String(olderResp).length && String(newerResp).length;
+      if (haveBoth) {
+        const respSim = lineSimilarity(String(newerResp).split("\n"), String(olderResp).split("\n"));
+        if (respSim < responseMovedThreshold) { responseMoved = true; break; }
+      }
+      newerResp = olderResp;
     }
+    repeats += 1;
+    lastSimilarity = sim;
   }
+
   return {
     looping: repeats >= minRepeats,
     repeats,
-    similarity: Number(lastSimilarity.toFixed(3))
+    similarity: Number(lastSimilarity.toFixed(3)),
+    responseMoved
   };
 }

@@ -7,7 +7,7 @@ import path from "node:path";
 import process from "node:process";
 import { syncRun } from "./cloud.mjs";
 import { sendAlert } from "./alerts.mjs";
-import { compressRequestBody, estimateTokens, requestShapeText, detectLoop } from "./compressor.mjs";
+import { compressRequestBody, estimateTokens, requestShapeText, detectLoop, responseSignature } from "./compressor.mjs";
 
 const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
@@ -528,6 +528,13 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
   // but-not-identical turns, which plain hashing never catches.
   const loopEnabled = (process.env.AIM_LOOP_DETECT ?? "on").toLowerCase() !== "off";
   const shapeHistory = [];
+  // Response signatures aligned with shapeHistory (the observation each prior
+  // prompt produced). Lets the loop detector tell circling from convergence:
+  // similar prompts only count as a loop when the response did not move either.
+  // Each entry is a mutable holder { sig } so the slot for an in-flight turn can
+  // be captured by reference and filled once its upstream response returns, even
+  // if concurrent turns push new entries or shift() trims the array meanwhile.
+  const responseHistory = [];
   const SHAPE_HISTORY_MAX = 12;
   const server = http.createServer(async (request, response) => {
     const started = Date.now();
@@ -551,15 +558,32 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
 
       const bodyText = await readRequestBody(request);
       const requestBody = safeJson(bodyText) ?? {};
-      // Loop signal: compare this request's shape against the recent run.
+      // Loop signal: compare this request's shape against the recent run. The
+      // response signatures gate prompt-similarity so a converging run (similar
+      // prompts, but the error/output is changing) is not flagged as circling.
       let loop = null;
+      let currentShape = null;
+      let responseSlot = null; // holder for THIS turn's response signature
       if (loopEnabled) {
         const shape = requestShapeText(requestBody);
         if (shape) {
-          const result = detectLoop(shape, shapeHistory);
-          loop = { looping: result.looping, repeats: result.repeats, similarity: result.similarity, truth: "calculated" };
+          currentShape = shape;
+          const result = detectLoop(shape, shapeHistory, {
+            responseSignatures: responseHistory.map((h) => h.sig),
+            currentResponseSignature: responseHistory.length ? responseHistory[responseHistory.length - 1].sig : null
+          });
+          loop = {
+            looping: result.looping,
+            repeats: result.repeats,
+            similarity: result.similarity,
+            responseMoved: result.responseMoved,
+            truth: "calculated"
+          };
           shapeHistory.push(shape);
+          responseSlot = { sig: "" }; // filled by reference once upstream returns
+          responseHistory.push(responseSlot);
           if (shapeHistory.length > SHAPE_HISTORY_MAX) shapeHistory.shift();
+          if (responseHistory.length > SHAPE_HISTORY_MAX) responseHistory.shift();
         }
       }
       const budget = readBudget();
@@ -639,6 +663,8 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
       if (gatewayMode === "mock") {
         const responseBody = mockCompletion(requestBody, url.pathname);
         const responseText = JSON.stringify(responseBody);
+        // Record before unblocking the client so a concurrent next turn sees it.
+        if (responseSlot) responseSlot.sig = responseSignature(responseBody);
         send(response, 200, responseText, "application/json; charset=utf-8");
         await appendGatewayEvent({
           at: new Date().toISOString(),
@@ -685,13 +711,14 @@ function createGatewayServer({ port = 8792, mock = false, upstream = {} } = {}) 
         body: forwardBody
       });
       const responseText = await upstreamResponse.text();
+      const responseBody = safeJson(responseText) ?? {};
+      // Record before unblocking the client so a concurrent next turn sees it.
+      if (responseSlot) responseSlot.sig = responseSignature(responseBody);
       response.writeHead(upstreamResponse.status, {
         "content-type": upstreamResponse.headers.get("content-type") ?? "application/json",
         "cache-control": "no-store"
       });
       response.end(responseText);
-
-      const responseBody = safeJson(responseText) ?? {};
       await appendGatewayEvent({
         at: new Date().toISOString(),
         path: url.pathname,
@@ -761,7 +788,7 @@ export async function startGateway({ port = 8792, mock = false } = {}) {
 // it down afterward. Upstream is pinned from the CURRENT env before the child's
 // base URLs are rewritten, so the gateway proxies to the real provider, not to
 // itself.
-async function startEphemeralGateway({ mock = false } = {}) {
+export async function startEphemeralGateway({ mock = false } = {}) {
   await ensureStore();
   const upstream = {
     openaiKey: process.env.AIM_UPSTREAM_API_KEY ?? process.env.OPENAI_API_KEY,

@@ -187,6 +187,10 @@ A working local tool, not a hosted SaaS. Ready for: wrapping real Codex / Claude
 - [Integrations](docs/integrations.md)
 - [Trust model](docs/trust-model.md)
 
+## Built by
+
+Runcap is built and maintained by Kirill D., a solo AI and automation consultant based in Calgary, Canada. He helps solo SaaS founders and service businesses ship AI features that hold up in production - cost control, vibe-code audits, and reliable automation. More at [launchsoloai.com](https://launchsoloai.com).
+
 ---
 
 The thesis: **AI agents need managers.**

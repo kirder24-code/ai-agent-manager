@@ -61,3 +61,26 @@ A rescue recommendation is valid only if it includes:
 3. confidence level;
 4. smallest next action;
 5. a prompt that narrows the next agent run.
+
+## Verification Integrity Rule
+
+A passing verification (exit code 0) is necessary but not sufficient evidence of delivery. The verifier itself can be tampered with: the agent can edit or delete the test, repoint the verify/`package.json` script, disable strict mode, or mock the real dependency. Therefore a guarded run (`runcap outcome --guard`) must grade the *trustworthiness* of the pass, never report a bare VERIFIED when:
+
+- a verifier file's hash changed between freeze and check (`VERIFIER_COMPROMISED`);
+- `package.json` scripts changed during the run (`VERIFIER_COMPROMISED`);
+- a protected/test path was modified (`VERIFIER_COMPROMISED`);
+- the task did not actually fail on the baseline tree (drops to `VERIFIED_WEAK` - the pass may prove nothing);
+- the pass does not reproduce from the baseline commit in a clean worktree (drops to `VERIFIED_WEAK`).
+
+`VERIFIED_STRONG` is reserved for a pass where the verifier was untouched, the baseline genuinely failed, and the clean-room re-verify reproduced the green.
+
+## Cost Scope Rule
+
+Verified Outcome Cost is the **observed LLM spend through the gateway only**. It must never be presented as the full cost of the work. It excludes:
+
+- flat subscriptions (Claude Max, ChatGPT Plus) not metered per task;
+- CI minutes, sandbox compute, and infrastructure;
+- human review and rework time;
+- retries not routed through the gateway.
+
+For real agent economics the honest unit is **Expected Verified Outcome Cost = total spend across N attempts / number of strongly-verified outcomes**, which requires N>=5 runs per agent. v0.1 deliberately measures only the one cost the gateway can observe without guessing, and labels it as such.

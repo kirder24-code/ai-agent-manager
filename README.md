@@ -221,6 +221,33 @@ Same task - *fix a broken `sum()` so the test passes* - across different models 
 
 Two facts a token dashboard can't show you: on gpt-4o the run that **delivered nothing** (row 2) cost *more* than the run that delivered (row 1); and the cheapest verified result (deepseek-chat, $0.000022) bought the same passing test as gpt-5.4 at ~43x the price. Reproduce any row with `OUTCOME_DEMO_MODEL=<model>` in front of the command above. (One run per row in v0.1 - the point is the unit, not a vendor ranking; a ranking needs N>=5 runs/agent and a pass-rate column.)
 
+## Verification Integrity (`runcap outcome --guard`)
+
+A green test only means something if the agent passed it *fairly*. An agent under pressure can turn a check green without doing the work: delete the failing test, rewrite the assertion, repoint the `npm test` script at `true`, disable TypeScript strict mode, mock the real API, or hardcode the expected answer. Exit code 0 - and a plain Verified Outcome Cost calls it delivered. So does every token dashboard.
+
+`--guard` verifies the verifier. Before the agent runs, Runcap freezes a **Task Contract**: the baseline git commit, a SHA-256 of every file the verify command names, a snapshot of `package.json` scripts, and a check that the task *actually fails today* (a pass on an already-green tree proves nothing). After the run it re-checks all of it, and re-runs the verify command from the baseline commit in a throwaway git worktree with only the agent's changed files copied in - so a green that depended on uncommitted local junk dies in the clean room.
+
+The result is a trust grade, not a binary:
+
+| Status | Meaning |
+|---|---|
+| `VERIFIED_STRONG` | Passed, verifier untouched, the task really failed before, and the pass survives a clean checkout. |
+| `VERIFIED_WEAK` | Passed and verifier untouched, but a strong condition was missed (e.g. baseline failure not reproduced). |
+| `UNVERIFIED` | Verification did not pass. |
+| `VERIFIER_COMPROMISED` | Passed, **but the verifier itself was modified during the run.** The green light cannot be trusted. |
+
+```bash
+runcap outcome run --guard \
+  --task "Fix the failing test" \
+  --verify "pnpm test" \
+  --allow src/ \
+  -- claude "fix one failing check, then stop"
+```
+
+`--protect <path>` marks extra paths the agent must not touch (tests, config, and `package.json` are protected by default); `--allow <path>` declares the only paths a legitimate fix should change, so out-of-scope edits drop the grade. The receipt gains a `verificationIntegrity` block listing every check, every truth label, and exactly which file was tampered with if the grade is `VERIFIER_COMPROMISED`.
+
+> **One honesty note that rides on every receipt:** Verified Outcome Cost is the **LLM spend that bought the result** - it does *not* include subscriptions, CI minutes, sandbox compute, or human review time. For real agent economics you want **Expected Verified Outcome Cost = total spend across N attempts / strongly-verified outcomes**, which needs N>=5 runs. That's the v0.2 unit; v0.1 measures the one cost the gateway can observe honestly.
+
 ## Pricing table
 
 Costs are calculated from a sourced multi-provider table - Anthropic (Opus / Sonnet / Haiku), OpenAI (GPT-5 family + legacy GPT-4), and DeepSeek (V4 Flash / V4 Pro) - with cache-read and batch discounts handled, labeled with source and verification date. When a model is unknown, Runcap says `unknown_price` rather than guessing.

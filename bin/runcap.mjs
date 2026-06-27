@@ -96,6 +96,17 @@ function takeFlag(input, name) {
   return true;
 }
 
+// Collect every occurrence of a repeatable option, e.g. --allow src --allow lib.
+function takeAll(input, name) {
+  const values = [];
+  let index;
+  while ((index = input.indexOf(name)) !== -1) {
+    values.push(input[index + 1]);
+    input.splice(index, 2);
+  }
+  return values.filter(Boolean);
+}
+
 // A real call can cost a fraction of a cent. toFixed(2)/(4) would print $0.00 or
 // $0.0000 and read as "nothing was recorded", so show a meaningful figure for
 // sub-cent spend instead of rounding a real charge down to zero.
@@ -198,12 +209,15 @@ try {
       const verify = takeOption(oArgs, "--verify");
       const label = takeOption(oArgs, "--label");
       const mock = takeFlag(oArgs, "--mock");
+      const guard = takeFlag(oArgs, "--guard");
+      const protect = takeAll(oArgs, "--protect");
+      const allow = takeAll(oArgs, "--allow");
       const separator = oArgs.indexOf("--");
       const childArgs = separator === -1 ? [] : oArgs.slice(separator + 1);
       if (!task) throw new Error("Missing --task \"description\".");
       if (!verify) throw new Error("Missing --verify \"<command>\" (e.g. --verify \"npm test && npm run build\").");
       if (childArgs.length === 0) throw new Error("Missing agent command after `--`.");
-      const result = await runOutcome({ task, verify, command: childArgs, label, mock });
+      const result = await runOutcome({ task, verify, command: childArgs, label, mock, guard, protect, allow });
       console.log("\n" + result.summary);
       console.log(`Receipt: .runcap/outcomes/${result.id}/receipt.json`);
     } else {

@@ -154,7 +154,7 @@ export async function runMission({ command, label, fuelBefore, autoGateway = fal
 // dollars per token. Reuses the same gateway cost, git-diff, and truth-label
 // machinery as runMission, so every number on the receipt is observed or
 // calculated, never guessed.
-export async function runOutcome({ task, verify, command, label, mock = false }) {
+export async function runOutcome({ task, verify, command, label, mock = false, guard = false, protect = [], allow = [] }) {
   if (!task || !task.trim()) throw new Error("runOutcome: a --task description is required.");
   if (!verify || !verify.trim()) throw new Error("runOutcome: a --verify command is required (e.g. \"npm test && npm run build\").");
   if (!Array.isArray(command) || command.length === 0) throw new Error("runOutcome: an agent command after `--` is required.");
@@ -168,6 +168,15 @@ export async function runOutcome({ task, verify, command, label, mock = false })
   // by log position, not wall clock. Two runs in the same second would otherwise
   // overlap a time window and double-count each other's calls and models.
   const eventCountBefore = (await readGatewayEvents()).length;
+
+  // Guard: freeze a Task Contract BEFORE the agent touches anything. Verifying
+  // the result is meaningless if the agent can edit the verifier; so we hash the
+  // verifier files, snapshot package scripts, record the baseline commit, and
+  // confirm the task actually fails today (a pass on an already-green tree
+  // proves nothing the agent did). cwd is known only after the mission resolves
+  // it, so we resolve it the same way runMission does.
+  const guardCwd = process.cwd();
+  const contract = guard ? await freezeTaskContract({ cwd: guardCwd, verify, protect, allow }) : null;
 
   // 1. Run the agent through the cap gateway so the spend is real and recorded.
   const mission = await runMission({ command, label: label ?? "outcome", autoGateway: true, mock });
@@ -195,8 +204,15 @@ export async function runOutcome({ task, verify, command, label, mock = false })
   const outcome = verifyPassed ? "VERIFIED" : "UNVERIFIED";
   const verifiedOutcomeCostUsd = verifyPassed ? actualCostUsd : null;
 
+  // 5. Guard: did the agent pass the check FAIRLY? Re-hash the verifier, look
+  // for tampering, and grade the verification's trustworthiness on a 4-level
+  // scale instead of a binary pass.
+  const integrity = guard
+    ? await checkVerificationIntegrity({ contract, cwd: missionRecord.cwd, changedFiles, verifyPassed, verify })
+    : null;
+
   const receipt = {
-    schema: "runcap.outcome-receipt/v0.1",
+    schema: guard ? "runcap.outcome-receipt/v0.2" : "runcap.outcome-receipt/v0.1",
     id: mission.id,
     generatedAt: new Date().toISOString(),
     task,
@@ -227,6 +243,11 @@ export async function runOutcome({ task, verify, command, label, mock = false })
       truth: "observed_from_git_and_exit_code"
     },
     outcome,
+    verificationIntegrity: integrity,
+    costScope: {
+      measured: "observed_llm_calls_through_gateway_only",
+      note: "Verified Outcome Cost is the LLM spend that bought the result. It does NOT include subscriptions, CI minutes, sandbox compute, or human review time. For full agent economics, divide total spend across N attempts by strongly-verified outcomes (Expected Verified Outcome Cost, needs N>=5)."
+    },
     missionReport: path.join(MISSIONS_DIR, mission.id, "report.md")
   };
 
@@ -256,6 +277,216 @@ async function runShell(commandString, cwd) {
   });
 }
 
+// --- Verification Integrity (runcap outcome --guard) ---------------------
+// The honest hole in outcome v0.1: it trusts the verifier. An agent can turn a
+// test green without doing the work - delete the test, rewrite the assertion,
+// repoint the `npm test` script, disable strict mode, mock the real API. The
+// guard freezes a contract before the run and re-checks it after, so a pass is
+// graded on a 4-level trust scale instead of a binary VERIFIED.
+
+const DEFAULT_PROTECTED_GLOBS = [
+  /(^|\/)[^/]*\.test\.[mc]?[jt]sx?$/,
+  /(^|\/)[^/]*\.spec\.[mc]?[jt]sx?$/,
+  /(^|\/)__tests__\//,
+  /(^|\/)tests?\//,
+  /(^|\/)package\.json$/,
+  /(^|\/)tsconfig[^/]*\.json$/,
+  /(^|\/)jest\.config\./,
+  /(^|\/)vitest\.config\./
+];
+
+// Pull the concrete file paths a verify command names so we can hash them and
+// detect edits. We can't statically parse an arbitrary shell pipeline, so we
+// take a deliberately simple, honest approach: any whitespace token that looks
+// like a path to an existing file is treated as a verifier file.
+function verifierFilesFrom(verify, cwd) {
+  const tokens = verify.split(/\s+/).filter(Boolean);
+  const files = [];
+  for (const raw of tokens) {
+    const tok = raw.replace(/^["']|["']$/g, "");
+    if (!/[./]/.test(tok)) continue;
+    const abs = path.isAbsolute(tok) ? tok : path.join(cwd, tok);
+    if (existsSync(abs) && !files.includes(abs)) files.push(abs);
+  }
+  return files;
+}
+
+function hashFile(absPath) {
+  try {
+    return createHash("sha256").update(readFileSync(absPath)).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+function packageScriptsOf(cwd) {
+  const pkg = readOptionalSync(path.join(cwd, "package.json"));
+  if (!pkg) return null;
+  const parsed = safeJson(pkg);
+  return parsed && parsed.scripts ? parsed.scripts : {};
+}
+
+function readOptionalSync(file) {
+  try {
+    return readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function freezeTaskContract({ cwd, verify, protect, allow }) {
+  const head = await git(["rev-parse", "HEAD"], cwd);
+  const baselineCommit = head.error ? null : head.text;
+  const verifierFiles = verifierFilesFrom(verify, cwd).map((abs) => ({
+    path: path.relative(cwd, abs),
+    sha256: hashFile(abs)
+  }));
+  const packageScripts = packageScriptsOf(cwd);
+
+  // Does the task actually fail today? A verify that already passes on the
+  // baseline tree proves the agent did nothing. Run it before the agent moves.
+  const baseline = await runShell(verify, cwd);
+
+  return {
+    schema: "runcap.task-contract/v0.1",
+    frozenAt: new Date().toISOString(),
+    cwd,
+    baselineCommit,
+    verifyCommand: verify,
+    verifierFiles,
+    packageScripts,
+    protectedPaths: protect,
+    allowedPaths: allow,
+    baselineVerify: { exitCode: baseline.exitCode, passed: baseline.exitCode === 0 }
+  };
+}
+
+function isProtected(relPath, extraProtected) {
+  if (extraProtected.some((p) => relPath === p || relPath.startsWith(p.replace(/\/?$/, "/")))) return true;
+  return DEFAULT_PROTECTED_GLOBS.some((re) => re.test(relPath));
+}
+
+function withinAllowed(relPath, allowed) {
+  if (allowed.length === 0) return true;
+  return allowed.some((a) => relPath === a || relPath.startsWith(a.replace(/\/?$/, "/")));
+}
+
+async function checkVerificationIntegrity({ contract, cwd, changedFiles, verifyPassed, verify }) {
+  const violations = [];
+  const checks = [];
+  const record = (id, ok, detail) => { checks.push({ id, ok, detail, truth: "calculated_from_observed_state" }); if (!ok) violations.push(id); };
+
+  // 1. Verifier files unchanged (hash match).
+  for (const vf of contract.verifierFiles) {
+    const now = hashFile(path.join(cwd, vf.path));
+    if (vf.sha256 === null) { record(`verifier_file_unreadable:${vf.path}`, true, "could not hash at freeze time"); continue; }
+    record(`verifier_file_unchanged:${vf.path}`, now === vf.sha256, now === null ? "verifier file deleted after run" : (now === vf.sha256 ? "hash matches" : "verifier file edited after run"));
+  }
+
+  // 2. package.json scripts unchanged (can't repoint `npm test` at `true`).
+  if (contract.packageScripts) {
+    const after = packageScriptsOf(cwd);
+    const same = JSON.stringify(after) === JSON.stringify(contract.packageScripts);
+    record("package_scripts_unchanged", same, same ? "scripts identical" : "package.json scripts changed during run");
+  }
+
+  // 3. No protected/test file deleted, and changes stay within allowed scope.
+  for (const f of changedFiles) {
+    if (isProtected(f, contract.protectedPaths)) {
+      record(`protected_path_untouched:${f}`, false, "agent modified a protected/test/config path");
+    }
+    if (!withinAllowed(f, contract.allowedPaths)) {
+      record(`within_allowed_scope:${f}`, false, "change is outside the allowed paths");
+    }
+  }
+
+  // 4. The task actually failed before the run (otherwise a pass is meaningless).
+  const baseFailed = contract.baselineVerify && contract.baselineVerify.passed === false;
+  record("baseline_failed_before_run", !!baseFailed, baseFailed ? "verify failed on the baseline tree (the task was real)" : "verify already passed before the agent ran - the pass proves nothing");
+
+  // 5. Re-run verify against the baseline commit in a clean checkout: does the
+  // pass survive without the agent's uncommitted working-tree state? This
+  // catches a green that only exists because of untracked/uncommitted hacks.
+  let cleanRoom = { ran: false, passed: null, detail: "skipped (no baseline commit)" };
+  if (verifyPassed && contract.baselineCommit) {
+    cleanRoom = await verifyInCleanWorktree({ cwd, baselineCommit: contract.baselineCommit, verify, changedFiles });
+    record("verify_survives_clean_checkout", cleanRoom.passed === true, cleanRoom.detail);
+  }
+
+  // Grade. Tampering with the verifier is categorically worse than a weak pass:
+  // it means the green light itself is untrustworthy.
+  const verifierTampered = checks.some((c) => !c.ok && (c.id.startsWith("verifier_file_unchanged:") || c.id.startsWith("protected_path_untouched:") || c.id === "package_scripts_unchanged"));
+
+  let status;
+  if (!verifyPassed) {
+    status = "UNVERIFIED";
+  } else if (verifierTampered) {
+    status = "VERIFIER_COMPROMISED";
+  } else if (violations.length === 0) {
+    status = "VERIFIED_STRONG";
+  } else {
+    status = "VERIFIED_WEAK";
+  }
+
+  const reason = {
+    UNVERIFIED: "Verification did not pass.",
+    VERIFIER_COMPROMISED: "Verification passed, but the verifier itself was modified during the run. The green light cannot be trusted.",
+    VERIFIED_STRONG: "Verification passed and the verifier was untouched: tests/scripts unchanged, changes in scope, the task really failed before, and the pass survives a clean checkout.",
+    VERIFIED_WEAK: "Verification passed and the verifier was untouched, but at least one strong condition was not met (e.g. baseline failure not reproduced, or pass not reproduced in a clean checkout)."
+  }[status];
+
+  return {
+    schema: "runcap.verification-integrity/v0.1",
+    status,
+    reason,
+    contract: {
+      baselineCommit: contract.baselineCommit,
+      verifierFiles: contract.verifierFiles.map((f) => f.path),
+      protectedPaths: contract.protectedPaths,
+      allowedPaths: contract.allowedPaths,
+      baselineVerifyPassed: contract.baselineVerify ? contract.baselineVerify.passed : null
+    },
+    cleanRoom,
+    checks,
+    violations
+  };
+}
+
+// Re-run the verify command from the baseline commit in a throwaway worktree,
+// then copy in only the agent's changed files. If the pass came from real edits
+// to allowed files it survives; if it came from uncommitted local junk it dies.
+async function verifyInCleanWorktree({ cwd, baselineCommit, verify, changedFiles }) {
+  const tmpBase = path.join(STORE_DIR, "cleanroom");
+  await mkdir(tmpBase, { recursive: true });
+  const wt = path.join(tmpBase, `wt-${createHash("sha1").update(`${baselineCommit}${Date.now()}${Math.random()}`).digest("hex").slice(0, 8)}`);
+  const add = await git(["worktree", "add", "--detach", wt, baselineCommit], cwd);
+  if (add.error) {
+    return { ran: false, passed: null, detail: `clean-worktree check skipped: ${add.error}` };
+  }
+  try {
+    // Bring the agent's changed files into the clean baseline so we test the
+    // work, not the agent's whole dirty tree.
+    for (const rel of changedFiles) {
+      const src = path.join(cwd, rel);
+      const dst = path.join(wt, rel);
+      try {
+        await mkdir(path.dirname(dst), { recursive: true });
+        await writeFile(dst, await readFile(src));
+      } catch { /* deleted/binary file: leave baseline version */ }
+    }
+    const result = await runShell(verify, wt);
+    return {
+      ran: true,
+      passed: result.exitCode === 0,
+      detail: result.exitCode === 0
+        ? "pass reproduced from baseline + changed files in a clean checkout"
+        : "pass did NOT reproduce in a clean checkout (green depended on uncommitted local state)"
+    };
+  } finally {
+    await git(["worktree", "remove", "--force", wt], cwd);
+  }
+}
+
 function formatOutcomeReceipt(r) {
   const usd = (n) => (n === null || n === undefined ? "n/a" : fmtUsd(n));
   const lines = [
@@ -280,6 +511,17 @@ function formatOutcomeReceipt(r) {
   } else {
     lines.push(`Verified Outcome Cost: N/A  (verification did not pass)`);
     lines.push(`Money spent without verified delivery: ${usd(r.cost.moneySpentWithoutVerifiedDeliveryUsd)}`);
+  }
+  if (r.verificationIntegrity) {
+    const vi = r.verificationIntegrity;
+    lines.push("");
+    lines.push(`Verification integrity: ${vi.status}`);
+    lines.push(`  ${vi.reason}`);
+    if (vi.violations.length) {
+      lines.push(`  Failed checks (${vi.violations.length}):`);
+      for (const c of vi.checks.filter((x) => !x.ok)) lines.push(`    - ${c.id}: ${c.detail}`);
+    }
+    if (vi.cleanRoom && vi.cleanRoom.ran) lines.push(`  Clean-checkout re-verify: ${vi.cleanRoom.passed ? "PASSED" : "FAILED"} (${vi.cleanRoom.detail})`);
   }
   return lines.join("\n") + "\n";
 }

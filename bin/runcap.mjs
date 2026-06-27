@@ -34,6 +34,14 @@ import {
   planToRun
 } from "../src/cloud.mjs";
 import { alertsCommand } from "../src/alerts.mjs";
+import {
+  loadPolicy,
+  validatePolicy,
+  evaluatePolicyVerdict,
+  policyMeta,
+  formatPolicyBlock
+} from "../src/policy.mjs";
+import { readFileSync, appendFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
 const command = args[0] ?? "welcome";
@@ -48,6 +56,11 @@ Usage:
   runcap outcome run --task "..." --verify "<cmd>" [--label name] [--mock] -- <agent cmd...>
                                  (runs the agent, then verifies; reports Verified Outcome Cost)
   runcap outcome [show]          (print the latest outcome receipt)
+  runcap policy validate [path]  (check .runcap/mission.yaml is well-formed)
+  runcap mission run [--policy path] [--task override] [--mock] -- <agent cmd...>
+                                 (enforce the repo policy; exit 1 if the mission is BLOCKED)
+  runcap ci [--policy path] [--receipt path]
+                                 (grade a receipt against the policy; writes PR summary, exit 1 on BLOCKED)
   runcap plans
   runcap cap <usd>               (set the hard cap the gateway enforces)
   runcap cap show                (show the current cap)
@@ -115,6 +128,19 @@ function fmtUsd(n) {
   if (n >= 0.01) return `$${n.toFixed(2)}`;
   if (n >= 0.0001) return `$${n.toFixed(4)}`;
   return `$${n.toPrecision(2)}`;
+}
+
+// In GitHub Actions, $GITHUB_STEP_SUMMARY is a file the runner renders as the
+// job's PR annotation. Append the verdict there so a reviewer sees red/green
+// without opening logs. A no-op off CI.
+function writeCiSummary(markdown) {
+  const target = process.env.GITHUB_STEP_SUMMARY;
+  if (!target) return;
+  try {
+    appendFileSync(target, markdown + "\n");
+  } catch {
+    // best-effort annotation only - never fail the verdict on a write error.
+  }
 }
 
 try {
@@ -225,6 +251,92 @@ try {
       if (!id) throw new Error("No outcome receipt found. Run `runcap outcome run ...` first.");
       console.log(await renderOutcome(id));
     }
+  } else if (command === "policy") {
+    const sub = args[1] ?? "validate";
+    if (sub === "validate") {
+      const explicit = args[2] && !args[2].startsWith("--") ? args[2] : undefined;
+      const loaded = loadPolicy(process.cwd(), explicit);
+      if (!loaded) throw new Error("No policy found. Create .runcap/mission.yaml (or pass a path).");
+      const { ok, errors, warnings } = validatePolicy(loaded.policy);
+      console.log(`Policy: ${loaded.source}`);
+      console.log(`Hash:   ${loaded.hash}`);
+      for (const w of warnings) console.log(`  warning: ${w}`);
+      if (ok) {
+        console.log("Policy is valid.");
+      } else {
+        for (const e of errors) console.log(`  error: ${e}`);
+        console.log("Policy is INVALID.");
+        process.exitCode = 1;
+      }
+    } else {
+      throw new Error(`Unknown policy subcommand: ${sub}. Try \`runcap policy validate [path]\`.`);
+    }
+  } else if (command === "mission") {
+    const sub = args[1] ?? "run";
+    if (sub !== "run") throw new Error(`Unknown mission subcommand: ${sub}. Try \`runcap mission run -- <agent cmd>\`.`);
+    const mArgs = args.slice(2);
+    const policyPath = takeOption(mArgs, "--policy");
+    const taskOverride = takeOption(mArgs, "--task");
+    const mock = takeFlag(mArgs, "--mock");
+    const separator = mArgs.indexOf("--");
+    const childArgs = separator === -1 ? [] : mArgs.slice(separator + 1);
+    if (childArgs.length === 0) throw new Error("Missing agent command after `--`.");
+
+    const loaded = loadPolicy(process.cwd(), policyPath);
+    if (!loaded) throw new Error("No policy found. Create .runcap/mission.yaml (or pass --policy <path>).");
+    const { ok, errors } = validatePolicy(loaded.policy);
+    if (!ok) {
+      for (const e of errors) console.error(`  policy error: ${e}`);
+      throw new Error("Mission policy is invalid - fix it before running the mission.");
+    }
+    const p = loaded.policy;
+    const mission = p.mission ?? {};
+    const verification = p.verification ?? {};
+    const budget = p.budget ?? {};
+    const task = taskOverride || [mission.name, mission.task_class].filter(Boolean).join(" - ") || mission.name;
+    const result = await runOutcome({
+      task,
+      verify: verification.command,
+      command: childArgs,
+      label: mission.name,
+      mock,
+      guard: true,
+      protect: Array.isArray(verification.protect) ? verification.protect : [],
+      allow: Array.isArray(verification.allow) ? verification.allow : [],
+      capUsd: budget.mission_hard_limit_usd ?? null,
+      policy: loaded
+    });
+    console.log("\n" + result.summary);
+    console.log(`Receipt: .runcap/outcomes/${result.id}/receipt.json`);
+    if (result.receipt.policy?.verdict === "BLOCKED") process.exitCode = 1;
+  } else if (command === "ci") {
+    const ciArgs = args.slice(1);
+    const policyPath = takeOption(ciArgs, "--policy");
+    const receiptPath = takeOption(ciArgs, "--receipt");
+
+    const loaded = loadPolicy(process.cwd(), policyPath);
+    if (!loaded) throw new Error("No policy found. Create .runcap/mission.yaml (or pass --policy <path>).");
+    const { ok, errors } = validatePolicy(loaded.policy);
+    if (!ok) {
+      for (const e of errors) console.error(`  policy error: ${e}`);
+      writeCiSummary(["## Runcap mission: policy INVALID", "", ...errors.map((e) => `- ${e}`)].join("\n"));
+      throw new Error("Mission policy is invalid.");
+    }
+
+    let receipt;
+    if (receiptPath) {
+      receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    } else {
+      const id = await latestOutcomeId();
+      if (!id) throw new Error("No outcome receipt found. Run `runcap mission run ...` first, or pass --receipt <path>.");
+      receipt = JSON.parse(readFileSync(`.runcap/outcomes/${id}/receipt.json`, "utf8"));
+    }
+
+    const verdict = evaluatePolicyVerdict(receipt, loaded.policy);
+    const block = formatPolicyBlock({ ...policyMeta(loaded), ...verdict });
+    console.log(block.join("\n"));
+    writeCiSummary(["## Runcap mission verdict: " + verdict.verdict, "", "```", ...block, "```"].join("\n"));
+    if (verdict.verdict === "BLOCKED") process.exitCode = 1;
   } else if (command === "login") {
     console.log(await loginCommand(args[1]));
   } else if (command === "logout") {

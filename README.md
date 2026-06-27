@@ -164,7 +164,7 @@ Every request that passes through the gateway is compressed before it's forwarde
 2. **Identical-block dedup** - when the exact same file dump or tool_result ships again in the same request, the repeat is replaced with a deterministic stub.
 3. **Delta-encoding of near-duplicates** - the layer no other proxy has. When the agent reads a file, edits one line, and re-reads it, the block is *similar but not identical*, so plain dedup saves nothing. Runcap sends a readable line-diff against the version the model already saw, and the model reconstructs the current file from it. On a real OpenAI call, an edited-file re-read dropped from **1186 to 737 prompt tokens - 37.9% saved, with the model still answering correctly about the changed line.** Proof and reproduction steps: [docs/delta-encoding-evidence.md](https://github.com/kirder24-code/ai-agent-manager/blob/main/docs/delta-encoding-evidence.md).
 
-It's pure Node with **zero ML or native dependencies**, so it installs everywhere without the build pain heavier compressors have.
+It's pure Node with **zero native or ML dependencies** (the only runtime dependency is `js-yaml`, pure JS), so it installs everywhere without the build pain heavier compressors have.
 
 The dashboard shows the result as one number: **"You saved $X · N tokens compressed · would have spent $Y."** Disable it with `AIM_COMPRESS=off` if you ever want raw passthrough.
 
@@ -257,6 +257,89 @@ runcap outcome run --guard \
 `--protect <path>` marks extra paths the agent must not touch (tests, config, and `package.json` are protected by default); `--allow <path>` declares the only paths a legitimate fix should change, so out-of-scope edits drop the grade. The receipt gains a `verificationIntegrity` block listing every check, every truth label, and exactly which file was tampered with if the grade is `VERIFIER_COMPROMISED`.
 
 > **One honesty note that rides on every receipt:** Verified Outcome Cost is the **LLM spend that bought the result** - it does *not* include subscriptions, CI minutes, sandbox compute, or human review time. For real agent economics you want **Expected Verified Outcome Cost = total spend across N attempts / strongly-verified outcomes**, which needs N>=5 runs. That's the v0.2 unit; v0.1 measures the one cost the gateway can observe honestly.
+
+## Mission Policy & CI enforcement (`runcap mission` / `policy` / `ci`)
+
+Everything above lives in one developer's terminal. A platform, VP-Eng, or FinOps owner can't act on it: there's no way to declare the rules of a mission *once*, in the repo, and no way to fail a pull request when an agent breaches budget or tampers with the evidence of its own success.
+
+A **mission policy** closes that gap. You declare the rules once in `.runcap/mission.yaml`, enforce them during the run, and grade the result into a **PASS / BLOCKED** verdict a GitHub Action turns into a red/green check on the PR.
+
+```yaml
+# .runcap/mission.yaml
+version: v1
+identity:
+  project: checkout
+  team: payments
+mission:
+  name: Fix the failing checkout test
+  task_class: bugfix
+budget:
+  mission_hard_limit_usd: 10      # required - per-mission hard cap (the gateway enforces it live)
+  max_llm_calls: 12               # optional - BLOCK if exceeded
+  max_runtime_minutes: 30         # optional - BLOCK if exceeded
+verification:
+  command: "pnpm test && pnpm build"   # required - the oracle (exit 0 = delivered)
+  guard: strict                        # strict (default) freezes + re-checks the verifier
+  protect: ["tests/**", "package.json"]  # paths the agent must not touch
+  allow:   ["src/checkout/**"]           # the only paths a legit fix should change
+```
+
+Validate it, then run the agent under it:
+
+```bash
+runcap policy validate                    # is .runcap/mission.yaml well-formed?
+runcap mission run -- claude "fix the failing checkout test, then stop"
+```
+
+`mission run` enforces the per-mission hard cap through the gateway, always runs the verification guard, and writes an outcome receipt that now carries a **policy block** - the org attribution, the limits, the **SHA-256 of the exact policy text that graded the run**, and the verdict. It exits `1` on `BLOCKED`, so it fails CI on its own. The mission is **BLOCKED** when any of these is true:
+
+- the verifier was tampered with (`VERIFIER_COMPROMISED`);
+- verification did not pass (`UNVERIFIED`);
+- a change landed outside the declared `allow` scope;
+- spend exceeded `mission_hard_limit_usd`, or the gateway's budget guard tripped mid-run;
+- `max_llm_calls` or `max_runtime_minutes` was exceeded.
+
+### The GitHub Action (the red/green PR check)
+
+```yaml
+# .github/workflows/runcap.yml
+jobs:
+  runcap-mission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      # 1. Run the agent under the policy (produces a graded receipt + exits 1 on BLOCKED)
+      - run: npx runcap mission run -- <your agent command>
+      # 2. Grade the latest receipt against the committed policy and annotate the PR
+      - uses: kirder24-code/ai-agent-manager@v1
+        with:
+          policy: .runcap/mission.yaml
+```
+
+`runcap ci` (what the Action runs) re-grades a receipt **against the committed policy text**, not whatever was stamped at run time, and appends the verdict to `$GITHUB_STEP_SUMMARY` as the PR annotation. Already have a receipt from an earlier job? Grade it directly:
+
+```bash
+runcap ci --policy .runcap/mission.yaml --receipt .runcap/outcomes/<id>/receipt.json
+```
+
+A reviewer sees one of two things:
+
+```
+Mission verdict: PASS
+  project checkout / team payments
+  Mission cost $0.0007 / $10.00
+  Policy hash: c857d10c…
+```
+
+```
+Mission verdict: BLOCKED
+  Blocked because:
+    - VERIFIER_COMPROMISED: the agent changed protected verification evidence (verifier_file_unchanged:app/verify.mjs).
+```
+
+Because the verdict is recomputed from the committed policy and the receipt records the policy hash, a reviewer can confirm *which rules graded the run* - the verdict is only as trustworthy as the policy hash it carries.
 
 ## Pricing table
 

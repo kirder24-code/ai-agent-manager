@@ -74,6 +74,16 @@ A passing verification (exit code 0) is necessary but not sufficient evidence of
 
 `VERIFIED_STRONG` is reserved for a pass where the verifier was untouched, the baseline genuinely failed, and the clean-room re-verify reproduced the green.
 
+## Policy-Bound Mission Rule
+
+A mission verdict (`PASS` / `BLOCKED`) is only as trustworthy as the policy that produced it. The rules can change between the run and the review, and a verdict computed against a since-edited policy would be a lie. Therefore:
+
+- the receipt records the **SHA-256 hash of the exact policy text** that graded the run, so a reviewer can confirm which rules were in force;
+- the CI grader (`runcap ci`) recomputes the verdict from the **committed policy text**, never trusting a verdict stamped into the receipt at run time;
+- `BLOCKED` is the conservative default: any single failing condition blocks the mission, so a reviewer never has to read past the verdict to know it is unsafe.
+
+A `PASS` therefore means: against *this* policy hash, the spend stayed under the hard cap, the verification passed a strong integrity grade, and every change landed inside the declared scope.
+
 ## Cost Scope Rule
 
 Verified Outcome Cost is the **observed LLM spend through the gateway only**. It must never be presented as the full cost of the work. It excludes:

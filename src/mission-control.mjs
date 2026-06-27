@@ -8,6 +8,7 @@ import process from "node:process";
 import { syncRun } from "./cloud.mjs";
 import { sendAlert } from "./alerts.mjs";
 import { compressRequestBody, estimateTokens, requestShapeText, detectLoop, responseSignature } from "./compressor.mjs";
+import { evaluatePolicyVerdict, policyMeta, formatPolicyBlock } from "./policy.mjs";
 
 const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
@@ -154,12 +155,38 @@ export async function runMission({ command, label, fuelBefore, autoGateway = fal
 // dollars per token. Reuses the same gateway cost, git-diff, and truth-label
 // machinery as runMission, so every number on the receipt is observed or
 // calculated, never guessed.
-export async function runOutcome({ task, verify, command, label, mock = false, guard = false, protect = [], allow = [] }) {
+export async function runOutcome({ task, verify, command, label, mock = false, guard = false, protect = [], allow = [], policy = null, capUsd = null }) {
   if (!task || !task.trim()) throw new Error("runOutcome: a --task description is required.");
   if (!verify || !verify.trim()) throw new Error("runOutcome: a --verify command is required (e.g. \"npm test && npm run build\").");
   if (!Array.isArray(command) || command.length === 0) throw new Error("runOutcome: an agent command after `--` is required.");
+  // A policy-bound mission is always guarded: the verdict leans on the integrity
+  // grade, so trusting an unguarded verifier would let a tampered pass score PASS.
+  if (policy) guard = true;
   await ensureStore();
   await mkdir(OUTCOMES_DIR, { recursive: true });
+
+  // Per-mission hard cap: override the gateway's budget env for the duration of
+  // THIS run so only this mission's spend counts against capUsd, then restore.
+  // The gateway reads readBudget()/budgetWindowMs() per request, so this reuses
+  // the existing budget_guard 429 enforcement with no new budget code.
+  const prevBudgetEnv = process.env.AIM_DAILY_BUDGET_USD;
+  const prevWindowEnv = process.env.AIM_BUDGET_WINDOW;
+  if (capUsd != null) {
+    process.env.AIM_DAILY_BUDGET_USD = String(capUsd);
+    process.env.AIM_BUDGET_WINDOW = "session";
+  }
+  try {
+    return await runOutcomeInner();
+  } finally {
+    if (capUsd != null) {
+      if (prevBudgetEnv === undefined) delete process.env.AIM_DAILY_BUDGET_USD;
+      else process.env.AIM_DAILY_BUDGET_USD = prevBudgetEnv;
+      if (prevWindowEnv === undefined) delete process.env.AIM_BUDGET_WINDOW;
+      else process.env.AIM_BUDGET_WINDOW = prevWindowEnv;
+    }
+  }
+
+  async function runOutcomeInner() {
 
   const windowMs = budgetWindowMs();
   const spentBefore = (await readGatewaySummary({ windowMs })).estimatedCostUsd;
@@ -190,6 +217,9 @@ export async function runOutcome({ task, verify, command, label, mock = false, g
   const runEvents = (await readGatewayEvents()).slice(eventCountBefore);
   const models = [...new Set(runEvents.map((e) => e.model).filter((m) => m && m !== "unknown"))];
   const llmCalls = runEvents.filter((e) => e.status >= 200 && e.status < 300 && e.usage).length;
+  // Did the gateway block a call to stay under the cap? A budget_guard 429 means
+  // the mission hit its ceiling - a policy-graded mission BLOCKS on it.
+  const budgetGuardTripped = runEvents.some((e) => e.status === 429 && e.truth === "budget_guard");
   const costTruth = llmCalls > 0
     ? "calculated_from_provider_usage_and_sourced_price_table"
     : "no_llm_calls_through_gateway";
@@ -212,7 +242,7 @@ export async function runOutcome({ task, verify, command, label, mock = false, g
     : null;
 
   const receipt = {
-    schema: guard ? "runcap.outcome-receipt/v0.2" : "runcap.outcome-receipt/v0.1",
+    schema: policy ? "runcap.outcome-receipt/v0.3" : (guard ? "runcap.outcome-receipt/v0.2" : "runcap.outcome-receipt/v0.1"),
     id: mission.id,
     generatedAt: new Date().toISOString(),
     task,
@@ -230,6 +260,7 @@ export async function runOutcome({ task, verify, command, label, mock = false, g
       verifiedOutcomeCostUsd,
       moneySpentWithoutVerifiedDeliveryUsd: verifyPassed ? 0 : actualCostUsd,
       llmCalls,
+      budgetGuardTripped,
       truth: costTruth
     },
     work: {
@@ -251,6 +282,13 @@ export async function runOutcome({ task, verify, command, label, mock = false, g
     missionReport: path.join(MISSIONS_DIR, mission.id, "report.md")
   };
 
+  // Policy-bound mission: stamp the receipt with who/what + the rules (and the
+  // hash of the exact policy text), then grade an overall PASS/BLOCKED verdict.
+  // The hash lets a reviewer confirm which rules were in force for this run.
+  if (policy) {
+    receipt.policy = { ...policyMeta(policy), ...evaluatePolicyVerdict(receipt, policy.policy) };
+  }
+
   const outcomeDir = path.join(OUTCOMES_DIR, mission.id);
   await mkdir(outcomeDir, { recursive: true });
   await writeFile(path.join(outcomeDir, "receipt.json"), JSON.stringify(receipt, null, 2));
@@ -258,6 +296,7 @@ export async function runOutcome({ task, verify, command, label, mock = false, g
   await writeFile(path.join(OUTCOMES_DIR, "latest"), mission.id);
 
   return { id: mission.id, receipt, summary: formatOutcomeReceipt(receipt) };
+  }
 }
 
 // Run a verification command string through the shell so operators can write
@@ -522,6 +561,10 @@ function formatOutcomeReceipt(r) {
       for (const c of vi.checks.filter((x) => !x.ok)) lines.push(`    - ${c.id}: ${c.detail}`);
     }
     if (vi.cleanRoom && vi.cleanRoom.ran) lines.push(`  Clean-checkout re-verify: ${vi.cleanRoom.passed ? "PASSED" : "FAILED"} (${vi.cleanRoom.detail})`);
+  }
+  if (r.policy) {
+    lines.push("");
+    lines.push(...formatPolicyBlock(r.policy));
   }
   return lines.join("\n") + "\n";
 }

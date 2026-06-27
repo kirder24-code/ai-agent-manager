@@ -1599,7 +1599,12 @@ const MODEL_PRICES = [
   { match: ["gpt-4.1-mini"], inputPerMillion: 0.4, outputPerMillion: 1.6, cacheReadPerMillion: 0.1, provider: "openai" },
   { match: ["gpt-4.1"], inputPerMillion: 2, outputPerMillion: 8, cacheReadPerMillion: 0.5, provider: "openai" },
   { match: ["gpt-4o-mini"], inputPerMillion: 0.15, outputPerMillion: 0.6, cacheReadPerMillion: 0.075, provider: "openai" },
-  { match: ["gpt-4o"], inputPerMillion: 2.5, outputPerMillion: 10, cacheReadPerMillion: 1.25, provider: "openai" }
+  { match: ["gpt-4o"], inputPerMillion: 2.5, outputPerMillion: 10, cacheReadPerMillion: 1.25, provider: "openai" },
+  // DeepSeek (api-docs.deepseek.com/quick_start/pricing). OpenAI-compatible API,
+  // so the same gateway prices and caps it with no extra setup. deepseek-chat /
+  // deepseek-reasoner are the non-thinking / thinking modes of deepseek-v4-flash.
+  { match: ["deepseek-v4-pro"], inputPerMillion: 0.435, outputPerMillion: 0.87, cacheReadPerMillion: 0.003625, provider: "deepseek" },
+  { match: ["deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner", "deepseek"], inputPerMillion: 0.14, outputPerMillion: 0.28, cacheReadPerMillion: 0.0028, provider: "deepseek" }
 ];
 
 function estimateApiCost(usage, model) {

@@ -16,6 +16,8 @@ On a real OpenAI call, one edited-file re-read dropped from **1,186 to 737 promp
 
 > Every other tool here is a rear-view mirror - it shows you the bill *after* you paid it. Runcap estimates the bill *before* you start and caps it. It is a circuit breaker, not a dashboard.
 
+> If Runcap caps a run for you or compresses a call, please **star the repo** - it is the one signal that tells me to keep building it in the open.
+
 ## Why
 
 **Agents loop on the same error, rewrite plans, and re-read files they just edited - every loop is tokens you pay for.** Multi-agent coding runs burn roughly **15x more tokens** than a single chat ([Anthropic engineering](https://www.anthropic.com/engineering/built-multi-agent-research-system)). They hand you a confident summary while the task is not actually done, and you find out what it cost when the invoice - or the subscription limit - arrives.
@@ -125,6 +127,10 @@ OPENAI_API_KEY=sk-... AIM_DAILY_BUDGET_USD=5 runcap gateway
 # Anthropic-native (Claude Code, /v1/messages)
 ANTHROPIC_API_KEY=sk-ant-... AIM_DAILY_BUDGET_USD=5 runcap gateway
 #   then: ANTHROPIC_BASE_URL=http://127.0.0.1:8792/v1
+
+# DeepSeek (OpenAI-compatible, much cheaper - same one command)
+OPENAI_API_KEY=sk-... AIM_UPSTREAM_BASE_URL=https://api.deepseek.com AIM_DAILY_BUDGET_USD=5 runcap gateway
+#   then point your agent at: OPENAI_BASE_URL=http://127.0.0.1:8792/v1  (model: deepseek-chat)
 ```
 
 When spend crosses the ceiling, the next call returns `429 budget_guard` instead of money leaving your account. Try it with no key: `runcap gateway --mock`.
@@ -149,7 +155,9 @@ This is a **calculated** signal, not a proven dollar-saving: it tells you *"the 
 
 ## Pricing table
 
-Costs are calculated from a sourced multi-provider table - Anthropic (Opus / Sonnet / Haiku) and OpenAI (GPT-5 family + legacy GPT-4), with cache-read and batch discounts handled - labeled with source and verification date. When a model is unknown, Runcap says `unknown_price` rather than guessing.
+Costs are calculated from a sourced multi-provider table - Anthropic (Opus / Sonnet / Haiku), OpenAI (GPT-5 family + legacy GPT-4), and DeepSeek (V4 Flash / V4 Pro) - with cache-read and batch discounts handled, labeled with source and verification date. When a model is unknown, Runcap says `unknown_price` rather than guessing.
+
+DeepSeek matters because its API is OpenAI-compatible: point the gateway at `https://api.deepseek.com` with your DeepSeek key and Runcap prices, caps, and compresses it with zero extra setup - the same one command as OpenAI. At roughly $0.14 / $0.28 per million input/output tokens it is far cheaper than the US frontier models, so the people running the biggest agent loops on it are exactly the ones a hard cap protects.
 
 ## Trust model
 

@@ -12,6 +12,7 @@ import { compressRequestBody, estimateTokens, requestShapeText, detectLoop, resp
 const STORE_DIR = ".runcap";
 const MISSIONS_DIR = path.join(STORE_DIR, "missions");
 const PLANS_DIR = path.join(STORE_DIR, "plans");
+const OUTCOMES_DIR = path.join(STORE_DIR, "outcomes");
 const FUEL_FILE = path.join(STORE_DIR, "fuel.json");
 const GATEWAY_EVENTS_FILE = path.join(STORE_DIR, "gateway-events.jsonl");
 const BUDGET_FILE = path.join(STORE_DIR, "budget.json");
@@ -145,6 +146,155 @@ export async function runMission({ command, label, fuelBefore, autoGateway = fal
     summary: shortSummary(mission),
     capSummary
   };
+}
+
+// Verified Outcome Cost: run an agent on one task, then run a verification
+// command, and only count the money as "delivered" if verification passes.
+// The unit the rest of the industry ignores: dollars per VERIFIED task, not
+// dollars per token. Reuses the same gateway cost, git-diff, and truth-label
+// machinery as runMission, so every number on the receipt is observed or
+// calculated, never guessed.
+export async function runOutcome({ task, verify, command, label, mock = false }) {
+  if (!task || !task.trim()) throw new Error("runOutcome: a --task description is required.");
+  if (!verify || !verify.trim()) throw new Error("runOutcome: a --verify command is required (e.g. \"npm test && npm run build\").");
+  if (!Array.isArray(command) || command.length === 0) throw new Error("runOutcome: an agent command after `--` is required.");
+  await ensureStore();
+  await mkdir(OUTCOMES_DIR, { recursive: true });
+
+  const windowMs = budgetWindowMs();
+  const spentBefore = (await readGatewaySummary({ windowMs })).estimatedCostUsd;
+  const cap = readBudget();
+  // Snapshot the ledger length BEFORE the run so we attribute events to this run
+  // by log position, not wall clock. Two runs in the same second would otherwise
+  // overlap a time window and double-count each other's calls and models.
+  const eventCountBefore = (await readGatewayEvents()).length;
+
+  // 1. Run the agent through the cap gateway so the spend is real and recorded.
+  const mission = await runMission({ command, label: label ?? "outcome", autoGateway: true, mock });
+  const missionRecord = await readMission(mission.id);
+
+  // 2. Cost actually spent on this run, measured from the gateway ledger delta.
+  const summaryAfter = await readGatewaySummary({ windowMs });
+  const spentAfter = summaryAfter.estimatedCostUsd;
+  const actualCostUsd = Number(Math.max(0, spentAfter - spentBefore).toFixed(6));
+  // Models/calls the run actually hit: exactly the events appended during it.
+  const runEvents = (await readGatewayEvents()).slice(eventCountBefore);
+  const models = [...new Set(runEvents.map((e) => e.model).filter((m) => m && m !== "unknown"))];
+  const llmCalls = runEvents.filter((e) => e.status >= 200 && e.status < 300 && e.usage).length;
+  const costTruth = llmCalls > 0
+    ? "calculated_from_provider_usage_and_sourced_price_table"
+    : "no_llm_calls_through_gateway";
+
+  // 3. Verify: run the user's verification command. Its exit code is the oracle.
+  const verifyResult = await runShell(verify, missionRecord.cwd);
+  const verifyPassed = verifyResult.exitCode === 0;
+
+  // 4. Did the agent actually change anything? A pass on a no-op is not delivery.
+  const changedFiles = missionRecord.diffEvidence.changedFiles;
+  const producedDiff = changedFiles.length > 0;
+  const outcome = verifyPassed ? "VERIFIED" : "UNVERIFIED";
+  const verifiedOutcomeCostUsd = verifyPassed ? actualCostUsd : null;
+
+  const receipt = {
+    schema: "runcap.outcome-receipt/v0.1",
+    id: mission.id,
+    generatedAt: new Date().toISOString(),
+    task,
+    agent: { command, program: command[0] },
+    models,
+    verify: {
+      command: verify,
+      exitCode: verifyResult.exitCode,
+      passed: verifyPassed,
+      truth: "observed_exit_code"
+    },
+    cost: {
+      plannedCapUsd: cap,
+      actualCostUsd,
+      verifiedOutcomeCostUsd,
+      moneySpentWithoutVerifiedDeliveryUsd: verifyPassed ? 0 : actualCostUsd,
+      llmCalls,
+      truth: costTruth
+    },
+    work: {
+      agentExitCode: missionRecord.exitCode,
+      agentDurationMs: missionRecord.durationMs,
+      verifyDurationMs: verifyResult.durationMs,
+      changedFiles,
+      changedFileCount: changedFiles.length,
+      producedDiff,
+      retries: { value: null, truth: "not_tracked_v0.1" },
+      truth: "observed_from_git_and_exit_code"
+    },
+    outcome,
+    missionReport: path.join(MISSIONS_DIR, mission.id, "report.md")
+  };
+
+  const outcomeDir = path.join(OUTCOMES_DIR, mission.id);
+  await mkdir(outcomeDir, { recursive: true });
+  await writeFile(path.join(outcomeDir, "receipt.json"), JSON.stringify(receipt, null, 2));
+  await writeFile(path.join(outcomeDir, "receipt.md"), formatOutcomeReceipt(receipt));
+  await writeFile(path.join(OUTCOMES_DIR, "latest"), mission.id);
+
+  return { id: mission.id, receipt, summary: formatOutcomeReceipt(receipt) };
+}
+
+// Run a verification command string through the shell so operators can write
+// natural pipelines like "npm test && npm run build". Output streams live.
+async function runShell(commandString, cwd) {
+  const started = Date.now();
+  const shell = process.platform === "win32" ? "cmd" : "sh";
+  const shellArgs = process.platform === "win32" ? ["/c", commandString] : ["-c", commandString];
+  return await new Promise((resolve) => {
+    const child = spawn(shell, shellArgs, { cwd, env: { ...process.env, AIM_WRAPPED: "1" }, shell: false });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk) => { const t = chunk.toString(); stdout += t; process.stdout.write(t); });
+    child.stderr?.on("data", (chunk) => { const t = chunk.toString(); stderr += t; process.stderr.write(t); });
+    child.on("error", (error) => resolve({ stdout, stderr: stderr + `\n${error.message}`, exitCode: 127, durationMs: Date.now() - started }));
+    child.on("close", (exitCode) => resolve({ stdout, stderr, exitCode: exitCode ?? 1, durationMs: Date.now() - started }));
+  });
+}
+
+function formatOutcomeReceipt(r) {
+  const usd = (n) => (n === null || n === undefined ? "n/a" : fmtUsd(n));
+  const lines = [
+    "Runcap outcome receipt",
+    "======================",
+    `Task:            ${r.task}`,
+    `Agent:           ${r.agent.command.join(" ")}`,
+    `Model(s):        ${r.models.length ? r.models.join(", ") : "none (no LLM calls through gateway)"}`,
+    `Planned cap:     ${r.cost.plannedCapUsd === null ? "no cap set" : usd(r.cost.plannedCapUsd)}`,
+    `Actual cost:     ${usd(r.cost.actualCostUsd)}  (${r.cost.llmCalls} priced LLM call(s), truth: ${r.cost.truth})`,
+    `Agent runtime:   ${(r.work.agentDurationMs / 1000).toFixed(1)}s   exit ${r.work.agentExitCode}`,
+    `Verify runtime:  ${(r.work.verifyDurationMs / 1000).toFixed(1)}s`,
+    `Retries:         not tracked (v0.1)`,
+    `Changed files:   ${r.work.changedFileCount}${r.work.changedFileCount ? " (" + r.work.changedFiles.join(", ") + ")" : ""}`,
+    `Verification:    \`${r.verify.command}\``,
+    `Verify result:   ${r.verify.passed ? "PASSED" : "FAILED"}  (exit ${r.verify.exitCode}, truth: observed)`,
+    "",
+    `Outcome:         ${r.outcome}`
+  ];
+  if (r.outcome === "VERIFIED") {
+    lines.push(`Verified Outcome Cost: ${usd(r.cost.verifiedOutcomeCostUsd)}  (money that bought a verified result)`);
+  } else {
+    lines.push(`Verified Outcome Cost: N/A  (verification did not pass)`);
+    lines.push(`Money spent without verified delivery: ${usd(r.cost.moneySpentWithoutVerifiedDeliveryUsd)}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+export async function latestOutcomeId() {
+  try {
+    return (await readFile(path.join(OUTCOMES_DIR, "latest"), "utf8")).trim();
+  } catch {
+    return null;
+  }
+}
+
+export async function renderOutcome(id) {
+  const file = path.join(OUTCOMES_DIR, id, "receipt.md");
+  return (await readFile(file, "utf8"));
 }
 
 export async function latestMissionId() {

@@ -11,7 +11,10 @@ import {
   preflightMission,
   recordFuel,
   renderReport,
+  renderOutcome,
+  latestOutcomeId,
   runMission,
+  runOutcome,
   setupProject,
   startDashboard,
   startGateway,
@@ -42,6 +45,9 @@ Usage:
   runcap run [--label name] [--cap|--no-cap] [--mock] -- <command...>
                                  (auto-enforces your cap; no manual gateway/base-URL setup)
   runcap plan [--fuel 24] [--quality high|balanced|cheap] [--apply-cap] -- <goal...>
+  runcap outcome run --task "..." --verify "<cmd>" [--label name] [--mock] -- <agent cmd...>
+                                 (runs the agent, then verifies; reports Verified Outcome Cost)
+  runcap outcome [show]          (print the latest outcome receipt)
   runcap plans
   runcap cap <usd>               (set the hard cap the gateway enforces)
   runcap cap show                (show the current cap)
@@ -184,6 +190,27 @@ try {
     const sync = await syncRun(planToRun(plan));
     if (sync === "synced") console.log("Cloud: synced to your Runcap Pro dashboard.");
     else if (sync && sync.startsWith("sync_failed")) console.log(`Cloud: ${sync}`);
+  } else if (command === "outcome") {
+    const sub = args[1] ?? "show";
+    if (sub === "run") {
+      const oArgs = args.slice(2);
+      const task = takeOption(oArgs, "--task");
+      const verify = takeOption(oArgs, "--verify");
+      const label = takeOption(oArgs, "--label");
+      const mock = takeFlag(oArgs, "--mock");
+      const separator = oArgs.indexOf("--");
+      const childArgs = separator === -1 ? [] : oArgs.slice(separator + 1);
+      if (!task) throw new Error("Missing --task \"description\".");
+      if (!verify) throw new Error("Missing --verify \"<command>\" (e.g. --verify \"npm test && npm run build\").");
+      if (childArgs.length === 0) throw new Error("Missing agent command after `--`.");
+      const result = await runOutcome({ task, verify, command: childArgs, label, mock });
+      console.log("\n" + result.summary);
+      console.log(`Receipt: .runcap/outcomes/${result.id}/receipt.json`);
+    } else {
+      const id = sub === "show" ? await latestOutcomeId() : sub;
+      if (!id) throw new Error("No outcome receipt found. Run `runcap outcome run ...` first.");
+      console.log(await renderOutcome(id));
+    }
   } else if (command === "login") {
     console.log(await loginCommand(args[1]));
   } else if (command === "logout") {

@@ -6,6 +6,16 @@
 
 **Runcap stops AI-agent spend before it runs - and shows whether that spend produced a verified result. Free, MIT, 100% local. Your code and tokens never touch a server.**
 
+> **An agent passing CI is not enough.**
+> Runcap verifies whether the evidence of success was altered during the mission.
+
+| Status | Meaning |
+|---|---|
+| `VERIFIED_STRONG` | Result passed an unchanged verifier and a clean-worktree replay. |
+| `VERIFIED_WEAK` | Result passed, but some integrity evidence is missing. |
+| `UNVERIFIED` | Verification did not pass. |
+| `VERIFIER_COMPROMISED` | The agent changed protected verification evidence. |
+
 ```text
 Estimate the run  →  Cap the spend  →  Verify the outcome
 ```

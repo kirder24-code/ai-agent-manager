@@ -1,0 +1,40 @@
+# Runcap Tier 3 adjudicator: recompute the merge verdict in CI from the PR's
+# BASE commit. This job never trusts the agent's receipt - it sources the
+# policy, verifier and lockfile from the base SHA, replays the verify command
+# in a clean worktree, and exits non-zero only on a real BLOCKED verdict.
+#
+# Security posture (every line here is load-bearing):
+#   - Triggered on the standard PR event so a fork runs with a read-only token
+#     and no access to repo secrets.
+#   - Read-only repository scope is the only permission granted: enough to
+#     checkout and read git history, nothing more.
+#   - GitHub-hosted runner, capped runtime, single self-sufficient required
+#     check that does not depend on any upstream job.
+name: Runcap adjudicate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  adjudicate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history so the base commit is available)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Runcap dependencies (pinned, no lifecycle scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Adjudicate the pull request from its base commit
+        run: node ./bin/runcap.mjs ci --mode adjudicate

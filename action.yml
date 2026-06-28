@@ -4,19 +4,28 @@ branding:
   icon: shield
   color: green
 inputs:
+  mode:
+    description: "grade (default) trusts an existing receipt against the policy; adjudicate recomputes the verdict in CI from the PR's base commit and never trusts the receipt."
+    required: false
+    default: grade
   policy:
     description: Path to the mission policy file.
     required: false
     default: .runcap/mission.yaml
   receipt:
-    description: Path to an existing outcome receipt to grade. If omitted, grades the latest receipt under .runcap/outcomes.
+    description: Path to an existing outcome receipt to grade. Only used in grade mode.
     required: false
 runs:
   using: composite
   steps:
-    - name: Install Runcap dependencies
+    - name: Install Runcap dependencies (pinned, no lifecycle scripts)
       shell: bash
-      run: npm install --omit=dev --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
+      run: npm ci --ignore-scripts --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
+    - name: Adjudicate the pull request from its base commit
+      if: ${{ inputs.mode == 'adjudicate' }}
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/bin/runcap.mjs" ci --mode adjudicate --policy "${{ inputs.policy }}"
     - name: Grade mission against policy
+      if: ${{ inputs.mode != 'adjudicate' }}
       shell: bash
       run: node "$GITHUB_ACTION_PATH/bin/runcap.mjs" ci --policy "${{ inputs.policy }}" ${{ inputs.receipt && format('--receipt {0}', inputs.receipt) || '' }}

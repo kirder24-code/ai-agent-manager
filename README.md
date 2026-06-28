@@ -360,6 +360,17 @@ Mission verdict: BLOCKED
 
 Because the verdict is recomputed from the committed policy and the receipt records the policy hash, a reviewer can confirm *which rules graded the run* - the verdict is only as trustworthy as the policy hash it carries.
 
+### Live proof
+
+See a public consumer-repository demo with three live pull requests: an in-scope source fix that passes, an out-of-scope change that is blocked, and a verifier edit that requires human approval.
+
+- Demo repo: [kirder24-code/runcap-proof-gate-demo](https://github.com/kirder24-code/runcap-proof-gate-demo)
+- [PR #1 - in-scope source fix - `PASS`](https://github.com/kirder24-code/runcap-proof-gate-demo/pull/1)
+- [PR #2 - out-of-scope change - `BLOCKED`](https://github.com/kirder24-code/runcap-proof-gate-demo/pull/2)
+- [PR #3 - verifier edit - `HUMAN_APPROVAL_REQUIRED`](https://github.com/kirder24-code/runcap-proof-gate-demo/pull/3)
+
+Each verdict was produced by the pinned Runcap action running in GitHub Actions on a real pull request.
+
 ## Pricing table
 
 Costs are calculated from a sourced multi-provider table - Anthropic (Opus / Sonnet / Haiku), OpenAI (GPT-5 family + legacy GPT-4), and DeepSeek (V4 Flash / V4 Pro) - with cache-read and batch discounts handled, labeled with source and verification date. When a model is unknown, Runcap says `unknown_price` rather than guessing.

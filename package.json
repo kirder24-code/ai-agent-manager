@@ -1,6 +1,6 @@
 {
   "name": "runcap",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Policy-bound budget enforcement and verification-integrity evidence for AI coding agents. Cap spend, enforce allowed scope, and fail the pull request when an agent tampers with its own success check. Local, MIT.",
   "license": "MIT",
   "type": "module",

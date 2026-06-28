@@ -84,6 +84,54 @@ A mission verdict (`PASS` / `BLOCKED`) is only as trustworthy as the policy that
 
 A `PASS` therefore means: against *this* policy hash, the spend stayed under the hard cap, the verification passed a strong integrity grade, and every change landed inside the declared scope.
 
+## CI Adjudication (v0.6)
+
+`runcap ci --mode adjudicate` is the CI-side judge a consumer repo makes a required PR check. It does not trust the agent or the agent's receipt; it recomputes the merge decision in a clean CI job from the pull request's **base commit**.
+
+### What Runcap proves in v0.6
+
+- **base-pinned policy** - the mission policy is read from the base commit, not from the candidate PR, so a PR cannot relax its own rules;
+- **base-pinned verifier** - the verification command and the files it names are taken from the base commit;
+- **allowed scope** - only the diff's allowed, text-only changes are applied; anything else does not get an automatic pass;
+- **clean replay** - the base-pinned verifier is re-run in a throwaway worktree: it must fail at base and pass after the change, or the verdict is not PASS;
+- **the agent receipt does not decide the verdict** - the required gate never reads the agent's self-reported receipt. It is neither graded nor displayed by the gate, so a forged `VERIFIED_STRONG` receipt has no effect.
+
+The verdict is a **CI-attested replay under a documented hardened GitHub profile**. It is not "unspoofable" and not "fully independent": its integrity rests on the GitHub setup below being in place.
+
+### Verdicts
+
+- `PASS` - the base verifier failed, the replay passed, and the change was allowed text-only edits inside scope;
+- `BLOCKED` - a scope violation, an unsafe diff type (delete / rename / binary / symlink / submodule / mode change), an unresolved base/head identity, or a failed replay;
+- `HUMAN_APPROVAL_REQUIRED` - the change touches the policy, a workflow, a verifier file, a dependency manifest/lockfile, or a protected path. Runcap does not auto-approve changes to its own rules or evidence; a human CODEOWNER must approve.
+
+### Required GitHub setup
+
+The adjudicator's guarantees only hold when the consumer repo is configured as a proof gate:
+
+- protected default branch;
+- the `Runcap adjudicate` check is required;
+- branch must be up to date with base before merge;
+- stale approvals dismissed on new commits;
+- CODEOWNERS for workflow, policy, verifier, dependency manifests, and protected paths;
+- no merge bypass for ordinary PR authors;
+- the Runcap action pinned by an immutable full 40-char commit SHA, never a floating tag.
+
+### What it does NOT prove
+
+- network isolation of the agent or the CI job;
+- absence of source-code exfiltration;
+- independent LLM cost / budget accounting (the adjudicator does not meter spend);
+- safety against repository admins or any actor with merge-bypass authority;
+- cryptographic attestation of the run;
+- merge-queue correctness (not supported in v0.6).
+
+### Bootstrap rule
+
+The judge must come from an immutable source outside the candidate PR. Two consequences:
+
+- The first PR that introduces or changes the Runcap trust surface (the adjudicator, the policy, the verifier, or the workflow) is approved by a human CODEOWNER. A candidate PR cannot self-adjudicate, because base code can't be trusted to judge head code and the repo may have no base policy yet.
+- After a release, consumer repos run Runcap from a pinned release SHA. Because that judge is immutable and lives outside the PR, a malicious PR cannot rewrite its own judge to force a fake PASS.
+
 ## Cost Scope Rule
 
 Verified Outcome Cost is the **observed LLM spend through the gateway only**. It must never be presented as the full cost of the work. It excludes:

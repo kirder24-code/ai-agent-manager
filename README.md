@@ -36,6 +36,29 @@ In a 6-run test on the same task, the run that **delivered nothing** cost *more*
 
 > If Runcap caps a run for you or compresses a call, please **star the repo** - it is the one signal that tells me to keep building it in the open.
 
+## Make a change earn merge eligibility
+
+> AI can propose a change.
+> Runcap makes it earn merge eligibility.
+
+`runcap ci --mode adjudicate` is a required PR check that does not trust the agent or its receipt. It recomputes the merge decision in a clean CI job from the pull request's **base commit**:
+
+```text
+AI-generated PR
+  → Runcap action pinned to an immutable release commit
+  → policy / verifier / dependencies read from the PR base commit
+  → clean CI replay
+  → PASS / BLOCKED / HUMAN_APPROVAL_REQUIRED
+```
+
+- **`PASS`** - the base verifier failed, the replay passed, and the change was allowed text-only edits inside scope.
+- **`BLOCKED`** - a scope violation, an unsafe diff type (delete / rename / binary / symlink / submodule / mode change), an unresolved base/head identity, or a failed replay.
+- **`HUMAN_APPROVAL_REQUIRED`** - the change touches the policy, a workflow, a verifier file, a dependency manifest/lockfile, or a protected path. Runcap does not auto-approve changes to its own rules or evidence; a human CODEOWNER must approve.
+
+The verdict is a **CI-attested replay under a documented hardened GitHub profile**. It is *not* "unspoofable," *not* "fully independent," and it is *not* independent budget enforcement - its integrity rests on the [required GitHub setup](docs/trust-model.md#required-github-setup) being in place. The agent's receipt never decides the verdict: the required gate does not read it.
+
+See the [trust model](docs/trust-model.md#ci-adjudication-v06) for exactly what v0.6 proves and what it does not, and [Install in a consumer repo](#install-in-a-consumer-repo) to wire it up.
+
 ## Why
 
 **Agents loop on the same error, rewrite plans, and re-read files they just edited - every loop is tokens you pay for.** Multi-agent coding runs burn roughly **15x more tokens** than a single chat ([Anthropic engineering](https://www.anthropic.com/engineering/built-multi-agent-research-system)). They hand you a confident summary while the task is not actually done, and you find out what it cost when the invoice - or the subscription limit - arrives.
@@ -301,30 +324,24 @@ runcap mission run -- claude "fix the failing checkout test, then stop"
 - spend exceeded `mission_hard_limit_usd`, or the gateway's budget guard tripped mid-run;
 - `max_llm_calls` or `max_runtime_minutes` was exceeded.
 
-### The GitHub Action (the red/green PR check)
+### The local grade vs. the CI adjudication
 
-```yaml
-# .github/workflows/runcap.yml
-jobs:
-  runcap-mission:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      # 1. Run the agent under the policy (produces a graded receipt + exits 1 on BLOCKED)
-      - run: npx runcap mission run -- <your agent command>
-      # 2. Grade the latest receipt against the committed policy and annotate the PR
-      - uses: kirder24-code/ai-agent-manager@v1
-        with:
-          policy: .runcap/mission.yaml
-```
+There are two ways the policy verdict reaches a PR, and they trust different things:
 
-`runcap ci` (what the Action runs) re-grades a receipt **against the committed policy text**, not whatever was stamped at run time, and appends the verdict to `$GITHUB_STEP_SUMMARY` as the PR annotation. Already have a receipt from an earlier job? Grade it directly:
+- **`runcap mission run`** (local / same-job) grades the run it just executed and re-checks it against the committed policy text. Useful, but the receipt it produces is *agent-side* evidence.
+- **`runcap ci --mode adjudicate`** (the required PR check) trusts none of that. It recomputes the verdict in a clean CI job from the PR's base commit and **never reads the agent receipt**. This is the gate that decides merge eligibility.
 
-```bash
-runcap ci --policy .runcap/mission.yaml --receipt .runcap/outcomes/<id>/receipt.json
-```
+### Install in a consumer repo
+
+Make the adjudication a required red/green PR check in your own repo:
+
+1. Add `.runcap/mission.yaml` (the policy - see the example above).
+2. Copy `examples/runcap-adjudicate.yml` into `.github/workflows/`.
+3. Replace the all-zero `RUNCAP_ACTION_SHA` placeholder with the full immutable commit SHA of the released version (resolve it with `gh api repos/kirder24-code/ai-agent-manager/git/refs/tags/vX.Y.Z --jq '.object.sha'`).
+4. Configure the hardened GitHub branch profile (protected branch, required check, up-to-date-before-merge, dismiss stale approvals, CODEOWNERS for workflow/policy/verifier/dependency/protected paths, no bypass for ordinary authors) - the full list is in the [trust model](docs/trust-model.md#required-github-setup).
+5. Make `Runcap adjudicate` a required status check.
+
+> The template ships with an all-zero placeholder SHA and is **intentionally not runnable until you insert the release SHA**. This is deliberate: the judge must be an immutable release commit that lives outside the candidate PR, so a malicious PR cannot rewrite its own judge.
 
 A reviewer sees one of two things:
 

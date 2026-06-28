@@ -1,0 +1,57 @@
+# Reference workflow: drop this into a CONSUMER repo at
+# .github/workflows/runcap-adjudicate.yml to make Runcap's independent verdict a
+# required red/green PR check.
+#
+# The whole point of Tier 3 is that the JUDGE is not the candidate. This
+# workflow therefore NEVER runs code from the pull request's workspace - no
+# `node ./bin/runcap.mjs`, no `uses: ./`, no `npm ci` of the PR's manifest. The
+# adjudicator comes only from the Runcap action pinned by a FULL 40-character
+# commit SHA, so a malicious PR cannot rewrite its own judge. The checkout below
+# brings in the PR's git history purely as DATA: the adjudicator reads the base
+# commit's policy and replays the base-pinned verifier in a clean worktree it
+# creates itself. Workspace files are never executed as the judge.
+#
+# Security posture (every line is load-bearing):
+#   - `on: pull_request` (NOT pull_request_target): a fork PR runs with a
+#     read-only token and no access to repo secrets.
+#   - `permissions: contents: read`: the only scope granted.
+#   - Every action pinned by full commit SHA, never a floating tag, so the bytes
+#     that run are immutable.
+#   - `persist-credentials: false`: the checkout token is not left on disk for
+#     PR-controlled steps to find.
+#   - GitHub-hosted runner, capped runtime, single self-sufficient required
+#     check with no `needs:` on any upstream job.
+#
+# Pin RUNCAP_ACTION_SHA to the commit a Runcap release tag points at. Resolve it
+# with:  gh api repos/kirder24-code/ai-agent-manager/git/refs/tags/vX.Y.Z --jq '.object.sha'
+name: Runcap adjudicate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  adjudicate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history so the base commit is available, no token left on disk)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      # The judge: the Runcap action pinned by a full commit SHA. Replace the SHA
+      # below with the commit a published Runcap release tag points at. This is
+      # the ONLY code that decides the verdict, and it cannot come from the PR.
+      - name: Runcap independent adjudication
+        uses: kirder24-code/ai-agent-manager@0000000000000000000000000000000000000000 # pin to a release SHA
+        with:
+          mode: adjudicate

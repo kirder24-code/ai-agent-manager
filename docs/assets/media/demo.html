@@ -24,24 +24,25 @@
   <div class="glow"></div>
   <div class="head">
     <div class="brand">run<span>cap</span></div>
-    <div class="tag">catch a too-broad run &rarr; cap spend &rarr; rescue when stuck</div>
+    <div class="tag">estimate &rarr; cap spend &rarr; verify integrity &rarr; mission verdict</div>
   </div>
   <div class="term">
-    <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">runcap &mdash; mission control</span></div>
-<pre><span class="c">$ runcap preflight -- claude "build the full app with auth, payments, deploy"</span>
+    <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">runcap - mission control</span></div>
+<pre><span class="c">$ runcap mission run --policy .runcap/mission.yaml -- claude "fix the failing checkout test"</span>
+<span class="c">Policy: checkout · team payments · cap $10 · verify "npm test"</span>
 
-Scope risk: <span class="bad">high</span>
-Recommendation: Do not launch as one broad mission.
-  Split into one vertical slice with a verification command.
+&rarr; estimate $3 - $7    ·    hard cap armed at $10
+<span class="ok">&rarr; compressed 1,186 &rarr; 737 tokens on a real call  (37.9% saved)</span>
 
-<span class="c">$ runcap run --label demo -- npm run build</span>
+&check; verify passed - but did the agent earn it?
+  <span class="c">· verifier unchanged   · baseline truly failed   · clean-room replay reproduced</span>
+  Verification integrity:  <span class="ok">VERIFIED_STRONG</span>
+  Mission cost $0.0007 / $10.00   ·   3 files changed, all in scope
+  Mission verdict:  <span class="a">PASS</span>
 
-<span class="bad">Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@/components'</span>
-
-Status: <span class="bad">stuck</span> (medium confidence)   Changed files: <span class="w">0</span>   Errors: <span class="w">1</span>
-
-<span class="a">Rescue prompt:</span> Diagnose this missing module first: Cannot find
-  package '@/components'. Check package.json + tsconfig paths, make the
-  smallest change that resolves the import, then re-run.</pre>
+<span class="c">$ runcap ci --policy .runcap/mission.yaml      # the same gate, on the PR</span>
+<span class="bad">&cross; agent rewrote app/verify.mjs - protected evidence changed</span>
+  Verification integrity:  <span class="bad">VERIFIER_COMPROMISED</span>
+  Mission verdict:  <span class="bad">BLOCKED</span>      &rarr; PR check fails, run stopped</pre>
   </div>
 </body></html>

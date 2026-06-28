@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/kirder24-code/ai-agent-manager/actions/workflows/ci.yml)
 
-![Runcap terminal demo: estimate, cap, compress, stop](docs/assets/demo.svg)
+![Runcap terminal demo: estimate, cap, verify integrity, mission PASS - then a tampered run graded BLOCKED on the PR](docs/assets/demo.svg)
 
 **Runcap stops AI-agent spend before it runs - and shows whether that spend produced a verified result. Free, MIT, 100% local. Your code and tokens never touch a server.**
 

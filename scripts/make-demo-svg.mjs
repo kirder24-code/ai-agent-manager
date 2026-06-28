@@ -15,29 +15,29 @@ const C = {
 };
 
 const lines = [
-  { t: "$ runcap plan --fuel 24 -- \"build a small auth feature and verify it\"", c: C.prompt, at: 0.3 },
-  { t: "Estimate:  $3 - $7   (range, not an oracle)", c: C.text, at: 1.0 },
-  { t: "Recommended cap:  $10", c: C.ok, at: 1.4 },
-  { t: "", c: C.text, at: 1.5 },
-  { t: "$ ANTHROPIC_BASE_URL=http://127.0.0.1:8792/v1 \\", c: C.prompt, at: 2.0 },
-  { t: "    AIM_DAILY_BUDGET_USD=10 runcap gateway", c: C.prompt, at: 2.3 },
-  { t: "gateway up  ·  compress on  ·  hard cap armed  ·  loop guard on", c: C.dim, at: 2.9 },
-  { t: "", c: C.text, at: 3.0 },
-  { t: "→ request   10,144 tokens", c: C.text, at: 3.5 },
-  { t: "→ compressed 1,260 tokens   (1,186 → 737 on a real call: 37.9% saved)", c: C.ok, at: 4.1 },
-  { t: "", c: C.text, at: 4.2 },
-  { t: "⚠ loop: last 3 prompts 97.7% identical - agent circling the same fail", c: C.violet, at: 5.0 },
-  { t: "   (looks busy, makes no progress, keeps spending)", c: C.dim, at: 5.5 },
-  { t: "", c: C.text, at: 5.6 },
-  { t: "→ next call would cross the ceiling", c: C.text, at: 6.2 },
-  { t: "HTTP 429  budget_guard  - run stopped before money left your account", c: C.bad, at: 6.9 }
+  { t: "$ runcap mission run --policy .runcap/mission.yaml -- claude \"fix the failing checkout test\"", c: C.prompt, at: 0.3 },
+  { t: "Policy: checkout · team payments · cap $10 · verify \"npm test\"", c: C.dim, at: 0.9 },
+  { t: "", c: C.text, at: 1.0 },
+  { t: "→ estimate $3 - $7    ·    hard cap armed at $10", c: C.text, at: 1.5 },
+  { t: "→ compressed 1,186 → 737 tokens on a real call  (37.9% saved)", c: C.ok, at: 2.1 },
+  { t: "", c: C.text, at: 2.2 },
+  { t: "✓ verify passed - but did the agent earn it?", c: C.text, at: 2.9 },
+  { t: "   · verifier unchanged   · baseline truly failed   · clean-room replay reproduced", c: C.dim, at: 3.4 },
+  { t: "   Verification integrity:  VERIFIED_STRONG", c: C.ok, at: 4.0 },
+  { t: "   Mission cost $0.0007 / $10.00   ·   3 files changed, all in scope", c: C.text, at: 4.6 },
+  { t: "   Mission verdict:  PASS", c: C.accent, at: 5.2 },
+  { t: "", c: C.text, at: 5.3 },
+  { t: "$ runcap ci --policy .runcap/mission.yaml      # the same gate, on the PR", c: C.prompt, at: 6.2 },
+  { t: "✗ agent rewrote app/verify.mjs - protected evidence changed", c: C.bad, at: 6.9 },
+  { t: "   Verification integrity:  VERIFIER_COMPROMISED", c: C.bad, at: 7.5 },
+  { t: "   Mission verdict:  BLOCKED      → PR check fails, run stopped", c: C.bad, at: 8.1 }
 ];
 
-const W = 920, H = 588;
+const W = 980, H = 588;
 const padX = 28, top = 78, lh = 27, fs = 16.5;
 const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-const total = 9.0; // loop length seconds
+const total = 11.0; // loop length seconds
 const rows = lines.map((ln, i) => {
   const y = top + i * lh;
   // fade+slide in at ln.at, hold, then reset at end of loop
@@ -47,7 +47,7 @@ const rows = lines.map((ln, i) => {
   ${esc(ln.t)}</text>`;
 }).join("\n");
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Runcap terminal demo: plan, cap, compress, detect loop, stop">
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Runcap terminal demo: estimate, cap, verify integrity, mission PASS, then a tampered run graded BLOCKED on the PR">
   <defs>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#34d399"/>
@@ -65,7 +65,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" wid
     <circle cx="26" cy="28" r="6" fill="#f87171"/>
     <circle cx="48" cy="28" r="6" fill="#fbbf24"/>
     <circle cx="70" cy="28" r="6" fill="#34d399"/>
-    <text x="100" y="33" fill="#8a8a8a" font-family="'JetBrains Mono',monospace" font-size="14">runcap · estimate · cap · compress · loop · rescue</text>
+    <text x="100" y="33" fill="#8a8a8a" font-family="'JetBrains Mono',monospace" font-size="14">runcap · estimate · cap · verify integrity · mission verdict</text>
     <text x="${W-150}" y="33" fill="url(#brand)" font-family="'JetBrains Mono',monospace" font-weight="700" font-size="15">run·cap</text>
   </g>
   <line x1="0" y1="50" x2="${W}" y2="50" stroke="#1c1c1f"/>

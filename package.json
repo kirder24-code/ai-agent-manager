@@ -64,7 +64,7 @@
     "screenshots": "node ./scripts/render-media-screenshots.mjs",
     "gateway": "node ./bin/runcap.mjs gateway",
     "fuel": "node ./bin/runcap.mjs fuel",
-    "check": "node --check ./bin/runcap.mjs && node --check ./src/mission-control.mjs"
+    "check": "node --check ./bin/runcap.mjs && node --check ./src/mission-control.mjs && node --check ./src/adjudicate.mjs"
   },
   "engines": {
     "node": ">=20"

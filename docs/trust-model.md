@@ -84,6 +84,8 @@ A mission verdict (`PASS` / `BLOCKED`) is only as trustworthy as the policy that
 
 A `PASS` therefore means: against *this* policy hash, the spend stayed under the hard cap, the verification passed a strong integrity grade, and every change landed inside the declared scope.
 
+Local mission grading and legacy `runcap ci --mode grade` can evaluate a receipt against a policy, but their evidence originates in the agent environment. Only `runcap ci --mode adjudicate`, run from an immutable pinned action under the documented hardened GitHub profile, is the v0.6 merge-eligibility gate. The CI Adjudication section below is the source of truth for that gate.
+
 ## CI Adjudication (v0.6)
 
 `runcap ci --mode adjudicate` is the CI-side judge a consumer repo makes a required PR check. It does not trust the agent or the agent's receipt; it recomputes the merge decision in a clean CI job from the pull request's **base commit**.

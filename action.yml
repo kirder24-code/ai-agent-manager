@@ -1,13 +1,13 @@
-name: Runcap Mission Control
-description: Policy, budget enforcement and trusted outcome evidence for AI coding agents.
+name: Runcap Proof Gate
+description: Local budget controls and CI replay evidence for AI-generated pull requests.
 branding:
   icon: shield
   color: green
 inputs:
   mode:
-    description: "grade (default) trusts an existing receipt against the policy; adjudicate recomputes the verdict in CI from the PR's base commit and never trusts the receipt."
+    description: "adjudicate (default) is the Proof Gate mode: it recomputes the verdict in CI from the PR's base commit and never trusts the receipt. grade reads an existing receipt and is not a merge-proof mode. Use adjudicate for required PR checks."
     required: false
-    default: grade
+    default: adjudicate
   policy:
     description: Path to the mission policy file.
     required: false

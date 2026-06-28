@@ -4,7 +4,7 @@
 
 ![Runcap terminal demo: estimate, cap, verify integrity, mission PASS - then a tampered run graded BLOCKED on the PR](docs/assets/demo.svg)
 
-**An AI coding agent can pass CI by editing the test that proves its own success. Runcap caps the spend before the run and issues evidence about whether that success check can be trusted. Free, MIT, 100% local - your code and tokens never touch a server.**
+**An AI coding agent can pass CI by editing the test that proves its own success. Runcap caps the spend before the run and issues evidence about whether that success check can be trusted. Free, MIT, local-first. Local runs keep Runcap's control plane on your machine; optional CI adjudication runs in your GitHub Actions environment.**
 
 > **An agent passing CI is not enough.**
 > Runcap verifies whether the evidence of success was altered during the mission.
@@ -187,7 +187,7 @@ Every request that passes through the gateway is compressed before it's forwarde
 
 1. **Per-field trim** - embedded JSON re-serialized compactly, long log/stack-trace dumps collapsed to head + tail, trailing whitespace squeezed.
 2. **Identical-block dedup** - when the exact same file dump or tool_result ships again in the same request, the repeat is replaced with a deterministic stub.
-3. **Delta-encoding of near-duplicates** - the layer no other proxy has. When the agent reads a file, edits one line, and re-reads it, the block is *similar but not identical*, so plain dedup saves nothing. Runcap sends a readable line-diff against the version the model already saw, and the model reconstructs the current file from it. On a real OpenAI call, an edited-file re-read dropped from **1186 to 737 prompt tokens - 37.9% saved, with the model still answering correctly about the changed line.** Proof and reproduction steps: [docs/delta-encoding-evidence.md](https://github.com/kirder24-code/ai-agent-manager/blob/main/docs/delta-encoding-evidence.md).
+3. **Delta-encoding of near-duplicates.** When the agent reads a file, edits one line, and re-reads it, the block is *similar but not identical*, so plain dedup saves nothing. Runcap sends a readable line-diff against the version the model already saw, and the model reconstructs the current file from it. On a real OpenAI call, an edited-file re-read dropped from **1186 to 737 prompt tokens - 37.9% saved, with the model still answering correctly about the changed line.** Proof and reproduction steps: [docs/delta-encoding-evidence.md](https://github.com/kirder24-code/ai-agent-manager/blob/main/docs/delta-encoding-evidence.md).
 
 It's pure Node with **zero native or ML dependencies** (the only runtime dependency is `js-yaml`, pure JS), so it installs everywhere without the build pain heavier compressors have.
 
@@ -378,20 +378,16 @@ Runcap is built not to fake certainty. Every important output carries a truth la
 
 If it cannot prove something, it says so.
 
-## Pricing (the product, not the tokens)
+## Availability
 
-| Tier | Price | What you get |
-|---|---|---|
-| **OSS** (MIT, local) | $0 forever | All local runs, cost estimation, hard cap, run wrapping, stuck detection, rescue prompts, local dashboard. Never crippleware. |
-| **Founding Pro** (limited) | **$49 once** | Lifetime Pro at the founder price - pay once, keep Pro forever, before it moves to $19/mo. |
-| **Pro** | $19/mo | Cloud sync across machines, hosted dashboard, estimate-vs-actual trends, shareable reports, alerts on cap breach |
-| **Team** | $49/seat/mo | Shared budget pools, org-wide ceilings, per-project rollups, role-based caps |
+Runcap v0.6 is open-source and free under MIT.
 
-The local core is free forever. Only persistence, collaboration, and aggregation are paid - the things that only matter once data leaves your laptop.
+The local CLI and CI adjudication mode are available now.
+Hosted sync, team budget pools, organization reporting, and paid plans are future ideas only. They are not available for purchase today.
 
 ## Current stage
 
-A working local tool, not a hosted SaaS. Ready for: wrapping real Codex / Claude / Cursor sessions, catching stuck agents, and proving rescue prompts save time. Not yet: a hosted cloud platform or a universal observability standard. It is not trying to replace Langfuse or LiteLLM - it does the thing they don't.
+A working local tool plus an optional CI adjudication mode, not a hosted SaaS. Ready for: wrapping real Codex / Claude / Cursor sessions, catching stuck agents, proving rescue prompts save time, and gating AI-generated pull requests in GitHub Actions. Not yet: a hosted cloud platform or a universal observability standard. It is not trying to replace Langfuse or LiteLLM; it focuses on a different layer - pre-run cost caps and merge-eligibility evidence.
 
 ## Documentation
 
@@ -408,4 +404,4 @@ Runcap is built and maintained by Kirill D., a solo AI and automation consultant
 
 ---
 
-The thesis: **AI agents need managers.**
+The thesis: **AI can propose a change. It should not certify its own success.**

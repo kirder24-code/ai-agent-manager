@@ -58,6 +58,7 @@
     "export": "node ./bin/runcap.mjs export",
     "templates": "node ./bin/runcap.mjs templates",
     "dashboard": "node ./bin/runcap.mjs dashboard",
+    "screenshots": "node ./scripts/render-media-screenshots.mjs",
     "gateway": "node ./bin/runcap.mjs gateway",
     "fuel": "node ./bin/runcap.mjs fuel",
     "check": "node --check ./bin/runcap.mjs && node --check ./src/mission-control.mjs"

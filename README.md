@@ -70,6 +70,8 @@ If you have those, Runcap caps your spend in one command. If you are looking for
 
 No API key required.
 
+![Runcap terminal proof: estimate, cap spend, compress tokens, verify integrity, and block a compromised mission](docs/assets/media/demo.png)
+
 ```bash
 git clone https://github.com/kirder24-code/ai-agent-manager.git
 cd ai-agent-manager

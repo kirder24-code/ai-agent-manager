@@ -4,7 +4,7 @@
 
 ![Runcap terminal demo: estimate, cap, verify integrity, mission PASS - then a tampered run graded BLOCKED on the PR](docs/assets/demo.svg)
 
-**Runcap stops AI-agent spend before it runs - and shows whether that spend produced a verified result. Free, MIT, 100% local. Your code and tokens never touch a server.**
+**An AI coding agent can pass CI by editing the test that proves its own success. Runcap caps the spend before the run and issues evidence about whether that success check can be trusted. Free, MIT, 100% local - your code and tokens never touch a server.**
 
 > **An agent passing CI is not enough.**
 > Runcap verifies whether the evidence of success was altered during the mission.
@@ -20,7 +20,7 @@
 Estimate the run  →  Cap the spend  →  Verify the outcome
 ```
 
-Every other tool measures **tokens**. You don't buy tokens - you buy a result that passes a check. So Runcap measures the only number that matters:
+Most cost and observability tools measure **tokens** used. But you don't buy tokens - you buy a result that passes a check. So Runcap measures the number that actually decides whether the spend was worth it:
 
 > **Verified Outcome Cost = total run cost / tasks that passed verification.** An agent that talks but never fixes the bug can cost *more* than one that does - and a token dashboard calls it "cheaper."
 
@@ -32,7 +32,7 @@ Every other tool measures **tokens**. You don't buy tokens - you buy a result th
 
 In a 6-run test on the same task, the run that **delivered nothing** cost *more* than the one that delivered, and the cheapest verified result was ~43x cheaper than the most expensive - same passing test. ([full table below](#real-results-6-runs-same-task-reproducible-offline))
 
-> Every other tool here is a rear-view mirror - it shows you the bill *after* you paid it. Runcap estimates the bill *before* you start, caps it, and tells you if the spend actually delivered. It is a circuit breaker with a receipt, not a dashboard.
+> Most tools here are a rear-view mirror - they show you the bill *after* you paid it. Runcap estimates the bill *before* you start, caps it during the run, and issues evidence about whether the declared verification can be trusted. It is a circuit breaker with a receipt, not a dashboard.
 
 > If Runcap caps a run for you or compresses a call, please **star the repo** - it is the one signal that tells me to keep building it in the open.
 
@@ -40,7 +40,7 @@ In a 6-run test on the same task, the run that **delivered nothing** cost *more*
 
 **Agents loop on the same error, rewrite plans, and re-read files they just edited - every loop is tokens you pay for.** Multi-agent coding runs burn roughly **15x more tokens** than a single chat ([Anthropic engineering](https://www.anthropic.com/engineering/built-multi-agent-research-system)). They hand you a confident summary while the task is not actually done, and you find out what it cost when the invoice - or the subscription limit - arrives.
 
-Observability tools (Langfuse, Helicone, LangSmith, AgentOps) measure the past. Gateways (LiteLLM, Portkey, OpenRouter) route the present. None of them stop the spend *before* it happens, and none tell you whether the spend produced a verified result. Runcap does the things the rear-view mirror can't:
+Observability tools (Langfuse, Helicone, LangSmith, AgentOps) measure the past, and some run evals on outputs. Gateways (LiteLLM, Portkey, OpenRouter) route the present. What they don't do is enforce a mission policy *during* the run - a hard spend cap, allowed scope, protected verification evidence - then issue evidence about whether the agent's own success check can be trusted. Runcap does the things the rear-view mirror can't:
 
 ```text
 estimate before build  →  cap during run  →  compress every call  →  rescue when stuck  →  verify the outcome

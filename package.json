@@ -1,7 +1,7 @@
 {
   "name": "runcap",
   "version": "0.5.0",
-  "description": "Cap every agent run before it starts: estimate cost, set a hard ceiling that stops the run, rescue stuck agents. Local, MIT, nothing uploaded.",
+  "description": "Policy-bound budget enforcement and verification-integrity evidence for AI coding agents. Cap spend, enforce allowed scope, and fail the pull request when an agent tampers with its own success check. Local, MIT.",
   "license": "MIT",
   "type": "module",
   "author": "Kirill D. <kirill@launchsoloai.com> (https://launchsoloai.com)",
@@ -15,16 +15,18 @@
   },
   "keywords": [
     "ai",
-    "agent",
-    "coding-agent",
-    "cost",
+    "ai-coding-agent",
+    "ai-agent-governance",
+    "agent-security",
+    "verification-integrity",
+    "policy-as-code",
+    "github-actions",
+    "ci",
+    "pull-request",
     "budget",
-    "claude",
-    "openai",
-    "gateway",
+    "cost",
     "cli",
-    "llm",
-    "token-cost"
+    "llm"
   ],
   "files": [
     "bin/",

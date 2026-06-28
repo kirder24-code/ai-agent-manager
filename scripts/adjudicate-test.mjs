@@ -188,26 +188,48 @@ if (prevEventPath === undefined) delete process.env.GITHUB_EVENT_PATH; else proc
 if (prevEventName === undefined) delete process.env.GITHUB_EVENT_NAME; else process.env.GITHUB_EVENT_NAME = prevEventName;
 
 // --- 14. forged "VERIFIED_STRONG" receipt cannot rescue a failing replay -----
-const plantReceipt = (receipt) => {
+// The required gate now refuses to even READ the agent receipt: it is neither
+// graded nor displayed. So a forged receipt can neither rescue a failing replay
+// nor is it parsed at all. We plant adversarial receipts and prove the verdict
+// is unchanged AND the gate reports it never consulted them.
+const plantReceipt = (rawString) => {
   const id = "forged";
   mkdirSync(path.join(tmp, ".runcap", "outcomes", id), { recursive: true });
-  writeFileSync(path.join(tmp, ".runcap", "outcomes", id, "receipt.json"), JSON.stringify(receipt));
+  writeFileSync(path.join(tmp, ".runcap", "outcomes", id, "receipt.json"), rawString);
   writeFileSync(path.join(tmp, ".runcap", "outcomes", "latest"), id);
 };
 const clearReceipt = () => rmSync(path.join(tmp, ".runcap", "outcomes"), { recursive: true, force: true });
 
-plantReceipt({ outcome: "VERIFIED", verificationIntegrity: { status: "VERIFIED_STRONG" }, cost: { actualCostUsd: 0.01 } });
+plantReceipt(JSON.stringify({ outcome: "VERIFIED", verificationIntegrity: { status: "VERIFIED_STRONG" }, cost: { actualCostUsd: 0.01 } }));
 const forgedFail = await adj(BASE, HEAD_REPLAYFAIL);
 check("forged VERIFIED_STRONG receipt does NOT rescue a failing replay", forgedFail.verdict === "BLOCKED", JSON.stringify(forgedFail.reasons));
-check("forged receipt surfaced as advisory only", forgedFail.agent_telemetry?.present === true && forgedFail.agent_telemetry?.influence_on_verdict === "none");
+check("required gate did not read the agent receipt (present=false)", forgedFail.agent_telemetry?.present === false && forgedFail.agent_telemetry?.influence_on_verdict === "none");
 clearReceipt();
 
 // --- 15. forged budget telemetry cannot block an honest pass ----------------
-plantReceipt({ outcome: "UNVERIFIED", verificationIntegrity: { status: "VERIFIER_COMPROMISED" }, cost: { actualCostUsd: 999999, budgetGuardTripped: true } });
+plantReceipt(JSON.stringify({ outcome: "UNVERIFIED", verificationIntegrity: { status: "VERIFIER_COMPROMISED" }, cost: { actualCostUsd: 999999, budgetGuardTripped: true } }));
 const forgedBudget = await adj(BASE, HEAD_HONEST);
 check("forged budget/integrity telemetry cannot block an honest pass", forgedBudget.verdict === "PASS", JSON.stringify(forgedBudget.reasons));
-check("budget telemetry marked no influence", forgedBudget.agent_telemetry?.influence_on_verdict === "none");
+check("required gate still did not read the receipt (present=false)", forgedBudget.agent_telemetry?.present === false && forgedBudget.agent_telemetry?.influence_on_verdict === "none");
 clearReceipt();
+
+// --- 15b. adversarial receipts cannot crash or stall the mandatory gate ------
+// Malformed JSON, an enormous blob, and a path-traversal "latest" pointer must
+// all be inert: the gate must still return a verdict with present=false.
+for (const [label, rawReceipt, latestOverride] of [
+  ["malformed JSON receipt", "{ this is : not json ]]]", undefined],
+  ["enormous receipt blob", JSON.stringify({ outcome: "VERIFIED", junk: "A".repeat(5_000_000) }), undefined],
+  ["receipt is a bare array", "[1,2,3]", undefined],
+  ["latest pointer path traversal", JSON.stringify({ outcome: "VERIFIED" }), "../../../../etc/passwd"]
+]) {
+  plantReceipt(rawReceipt);
+  if (latestOverride !== undefined) writeFileSync(path.join(tmp, ".runcap", "outcomes", "latest"), latestOverride);
+  let crashed = false; let v;
+  try { v = await adj(BASE, HEAD_HONEST); } catch { crashed = true; }
+  check(`${label}: gate does not crash`, !crashed);
+  check(`${label}: verdict still PASS, receipt not read`, !crashed && v.verdict === "PASS" && v.agent_telemetry?.present === false);
+  clearReceipt();
+}
 
 // --- 16. honesty: the verdict never claims runtime hardening attestation -----
 check("verdict carries honest hardening provenance (documented, not attested)",
@@ -253,14 +275,60 @@ check("bin writes a PR summary to GITHUB_STEP_SUMMARY", /Runcap CI adjudication:
 check("exitCodeFor PASS=0 / HUMAN=0 / BLOCKED=1",
   exitCodeFor("PASS") === 0 && exitCodeFor("HUMAN_APPROVAL_REQUIRED") === 0 && exitCodeFor("BLOCKED") === 1);
 
-// --- 21. the reference workflow is least-privilege --------------------------
-const wfPath = path.join(REPO_ROOT, ".github", "workflows", "runcap-adjudicate.yml");
-const wfText = readFileSync(wfPath, "utf8");
+// --- 21. the reference workflow is least-privilege AND a proof gate ----------
+// The consumer reference is a TEMPLATE under examples/ (not an active workflow
+// in this repo), because Runcap's own repo has no base policy to self-adjudicate
+// and, more importantly, the judge must never be code from the candidate PR.
+const wfPath = path.join(REPO_ROOT, "examples", "runcap-adjudicate.yml");
+const wfRaw = readFileSync(wfPath, "utf8");
+// Assert on the effective YAML directives, not the explanatory comments. The
+// header documents what the workflow must NOT do (and so legitimately contains
+// strings like "pull_request_target"); strip comments so the safety checks see
+// only the real instructions. Inline `# v4.3.1` after a SHA is stripped too,
+// which is harmless because the SHA precedes the `#`.
+const wfText = wfRaw.split("\n").map((line) => line.replace(/#.*$/, "")).join("\n");
 check("reference workflow triggers on pull_request (not pull_request_target)",
   /on:\s*\n\s*pull_request:/.test(wfText) && !/pull_request_target/.test(wfText), "trigger");
 check("reference workflow grants only contents: read", /permissions:\s*\n\s*contents:\s*read/.test(wfText) && !/id-token/.test(wfText) && !/write/.test(wfText.replace(/contents:\s*read/g, "")), "permissions");
 check("reference workflow caps runtime (timeout-minutes: 10)", /timeout-minutes:\s*10/.test(wfText));
 check("reference workflow uses no `needs:` (self-sufficient required gate)", !/\n\s*needs:/.test(wfText));
+
+// Proof-gate hardening: the judge must NOT be PR-workspace code.
+check("reference workflow never executes PR-workspace `node ./bin/runcap.mjs`", !/node\s+\.\/bin\/runcap\.mjs/.test(wfText), "executes workspace code");
+check("reference workflow never uses a local action (`uses: ./`)", !/uses:\s*\.\//.test(wfText), "local action");
+check("reference workflow never runs `npm ci`/`npm install` of the PR manifest", !/npm\s+(ci|install)/.test(wfText), "PR-workspace install");
+check("reference workflow sets persist-credentials: false (never true)", /persist-credentials:\s*false/.test(wfText) && !/persist-credentials:\s*true/.test(wfText), "persist-credentials");
+// Every `uses:` must be pinned to a full 40-hex commit SHA, never a floating tag.
+const usesRefs = [...wfText.matchAll(/uses:\s*([^\s#]+)/g)].map((m) => m[1]);
+check("reference workflow pins every action by a full 40-char commit SHA (no @v4/@v1 tags)",
+  usesRefs.length > 0 && usesRefs.every((u) => /@[0-9a-f]{40}$/.test(u)), JSON.stringify(usesRefs));
+check("reference workflow's judge is the released Runcap action, not workspace code",
+  /uses:\s*kirder24-code\/ai-agent-manager@[0-9a-f]{40}/.test(wfText) && /mode:\s*adjudicate/.test(wfText), "released action judge");
+
+// --- 22. the judge is the adjudicator's OWN code, not the PR's bin -----------
+// A head PR that rewrites bin/runcap.mjs to always print PASS, or rewrites
+// src/adjudicate.mjs, cannot change the verdict, because the adjudicator we run
+// is THIS repo's module/bin (the released-action analogue), never the head copy.
+const HEAD_FAKE_BIN = makeHead("h-fake-bin", () => {
+  w("app/broken.mjs", "export const ok = false; // still broken\n");
+  mkdirSync(path.join(tmp, "bin"), { recursive: true });
+  w("bin/runcap.mjs", "#!/usr/bin/env node\nconsole.log('Verdict: PASS'); process.exit(0);\n");
+});
+const fakeBin = await adj(BASE, HEAD_FAKE_BIN);
+check("head PR rewriting bin/runcap.mjs to fake PASS is still BLOCKED by the trusted adjudicator",
+  fakeBin.verdict === "BLOCKED", JSON.stringify(fakeBin.reasons));
+// And via the REAL trusted bin (this repo's, analogue of the pinned released action):
+const fakeBinReal = runBin(["--base", BASE, "--head", HEAD_FAKE_BIN]);
+check("trusted `runcap ci --mode adjudicate` exits 1 on a fake-PASS head bin", fakeBinReal.code === 1, `code=${fakeBinReal.code}`);
+
+const HEAD_FAKE_ADJ = makeHead("h-fake-adj", () => {
+  w("app/broken.mjs", "export const ok = false; // still broken\n");
+  mkdirSync(path.join(tmp, "src"), { recursive: true });
+  w("src/adjudicate.mjs", "export async function adjudicate(){return {verdict:'PASS',reasons:[]};}\nexport function exitCodeFor(){return 0;}\nexport function formatAdjudication(){return ['Verdict: PASS'];}\n");
+});
+const fakeAdj = await adj(BASE, HEAD_FAKE_ADJ);
+check("head PR rewriting src/adjudicate.mjs is still BLOCKED (we never import the head copy)",
+  fakeAdj.verdict === "BLOCKED", JSON.stringify(fakeAdj.reasons));
 
 console.log("\n" + (failures === 0 ? "ALL ADJUDICATE TESTS PASSED" : `${failures} ADJUDICATE TEST(S) FAILED`));
 process.exit(failures === 0 ? 0 : 1);

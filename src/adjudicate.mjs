@@ -350,33 +350,28 @@ async function mkdtempWorktreeBase() {
   return base;
 }
 
-// --- advisory agent telemetry (NEVER influences the verdict) ----------------
+// --- agent telemetry: deliberately NOT read by the required gate ------------
 
-// Best-effort read of the agent's self-reported receipt, purely to surface it
-// next to the independently computed verdict. Forgeable, so it is labelled
-// advisory and explicitly cannot move the verdict.
-function readAgentTelemetry(cwd) {
-  const out = { truth: "self_reported_by_agent_advisory_only", influence_on_verdict: "none", present: false };
-  try {
-    const latest = path.join(cwd, ".runcap", "outcomes", "latest");
-    if (!existsSync(latest)) return out;
-    const id = readFileSync(latest, "utf8").trim();
-    const receiptPath = path.join(cwd, ".runcap", "outcomes", id, "receipt.json");
-    if (!existsSync(receiptPath)) return out;
-    const r = JSON.parse(readFileSync(receiptPath, "utf8"));
-    out.present = true;
-    out.reported_outcome = r.outcome ?? null;
-    out.reported_integrity_status = r.verificationIntegrity?.status ?? null;
-    out.reported_cost_usd = r.cost?.actualCostUsd ?? null;
-  } catch { /* advisory only */ }
-  return out;
-}
+// The agent's receipt is agent-controlled input. A forged "VERIFIED_STRONG"
+// receipt is exactly the Tier 2 attack this gate exists to defeat, so the
+// required job must never parse it: not to grade the verdict (it never did),
+// and not even to display it, because reading attacker-controlled JSON in the
+// mandatory check is needless attack surface (a malformed or enormous receipt
+// could crash or stall the only gate guarding the merge). The verdict therefore
+// reports a constant, telling a reviewer plainly that no receipt was consulted.
+// A later, NON-required report layer may surface advisory telemetry; the gate
+// that decides the merge does not.
+const GATE_AGENT_TELEMETRY = Object.freeze({
+  present: false,
+  influence_on_verdict: "none",
+  truth: "agent_receipt_not_read_by_required_gate"
+});
 
 // --- the adjudicator --------------------------------------------------------
 
 export async function adjudicate({ cwd = process.cwd(), baseFlag, headFlag, policyPath } = {}) {
   const hardening = { required_profile: "documented", runtime_attestation: "not_performed_in_pr_job" };
-  const agentTelemetry = readAgentTelemetry(cwd);
+  const agentTelemetry = GATE_AGENT_TELEMETRY;
 
   const base = (verdict, reasons, extra = {}) => ({
     schema: "runcap.ci-verdict/v1",
@@ -498,9 +493,7 @@ export function formatAdjudication(v) {
     lines.push(`Replay:      baseline_failed=${ce.baseline_failed}  replay_passed=${ce.replay_passed}  deps=${ce.dependency_install}`);
   }
   lines.push(`Hardening:   required_profile=${v.repository_hardening.required_profile}, runtime_attestation=${v.repository_hardening.runtime_attestation}`);
-  if (v.agent_telemetry?.present) {
-    lines.push(`Agent says:  outcome=${v.agent_telemetry.reported_outcome}, integrity=${v.agent_telemetry.reported_integrity_status} (ADVISORY ONLY - did not affect this verdict)`);
-  }
+  lines.push(`Agent receipt: not read by this required gate (verdict is recomputed from the base commit).`);
   if (Array.isArray(v.reasons) && v.reasons.length) {
     lines.push(v.verdict === "PASS" ? `Why:` : `Why ${v.verdict}:`);
     for (const r of v.reasons) lines.push(`  - ${r}`);

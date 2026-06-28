@@ -23,8 +23,12 @@
 #     check with no `needs:` on any upstream job.
 #
 # This template is pinned to Runcap v0.6.0. When intentionally upgrading, replace
-# the SHA with the exact commit a Runcap release tag points at. Resolve it with:
-#   gh api repos/kirder24-code/ai-agent-manager/git/refs/tags/vX.Y.Z --jq '.object.sha'
+# the SHA with the full 40-character target commit SHA shown for the GitHub Release
+# you choose. For local verification in a clone of the Runcap repository, peel an
+# annotated tag to its commit with:
+#   git rev-parse "vX.Y.Z^{}"
+# Do not use an annotated tag object SHA - for the Proof Gate, pin the commit SHA
+# that the release tag resolves to.
 # Never use @v1 or another floating tag for the Proof Gate. Use a full immutable commit SHA.
 name: Runcap adjudicate
 

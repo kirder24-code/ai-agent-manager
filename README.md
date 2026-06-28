@@ -337,11 +337,11 @@ Make the adjudication a required red/green PR check in your own repo:
 
 1. Add `.runcap/mission.yaml` (the policy - see the example above).
 2. Copy `examples/runcap-adjudicate.yml` into `.github/workflows/`.
-3. Replace the all-zero `RUNCAP_ACTION_SHA` placeholder with the full immutable commit SHA of the released version (resolve it with `gh api repos/kirder24-code/ai-agent-manager/git/refs/tags/vX.Y.Z --jq '.object.sha'`).
+3. The template is pinned to Runcap v0.6.0. When intentionally upgrading, replace the SHA with the exact commit SHA of the release you choose (resolve it with `gh api repos/kirder24-code/ai-agent-manager/git/refs/tags/vX.Y.Z --jq '.object.sha'`). Never use `@v1` or another floating tag for the Proof Gate. Use a full immutable commit SHA.
 4. Configure the hardened GitHub branch profile (protected branch, required check, up-to-date-before-merge, dismiss stale approvals, CODEOWNERS for workflow/policy/verifier/dependency/protected paths, no bypass for ordinary authors) - the full list is in the [trust model](docs/trust-model.md#required-github-setup).
 5. Make `Runcap adjudicate` a required status check.
 
-> The template ships with an all-zero placeholder SHA and is **intentionally not runnable until you insert the release SHA**. This is deliberate: the judge must be an immutable release commit that lives outside the candidate PR, so a malicious PR cannot rewrite its own judge.
+> The template is pinned to the **Runcap v0.6.0** release commit. This is deliberate: the judge must be an immutable release commit that lives outside the candidate PR, so a malicious PR cannot rewrite its own judge.
 
 A reviewer sees one of two things:
 

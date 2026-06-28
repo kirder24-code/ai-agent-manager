@@ -22,8 +22,14 @@
 #   - GitHub-hosted runner, capped runtime, single self-sufficient required
 #     check with no `needs:` on any upstream job.
 #
-# Pin RUNCAP_ACTION_SHA to the commit a Runcap release tag points at. Resolve it
-# with:  gh api repos/kirder24-code/ai-agent-manager/git/refs/tags/vX.Y.Z --jq '.object.sha'
+# This template is pinned to Runcap v0.6.0. When intentionally upgrading, replace
+# the SHA with the full 40-character target commit SHA shown for the GitHub Release
+# you choose. For local verification in a clone of the Runcap repository, peel an
+# annotated tag to its commit with:
+#   git rev-parse "vX.Y.Z^{}"
+# Do not use an annotated tag object SHA - for the Proof Gate, pin the commit SHA
+# that the release tag resolves to.
+# Never use @v1 or another floating tag for the Proof Gate. Use a full immutable commit SHA.
 name: Runcap adjudicate
 
 on:
@@ -48,10 +54,11 @@ jobs:
         with:
           node-version: 22
 
-      # The judge: the Runcap action pinned by a full commit SHA. Replace the SHA
-      # below with the commit a published Runcap release tag points at. This is
-      # the ONLY code that decides the verdict, and it cannot come from the PR.
+      # The judge: the Runcap action pinned by a full commit SHA. This template is
+      # pinned to Runcap v0.6.0; when intentionally upgrading, replace the SHA below
+      # with the commit a published Runcap release tag points at. This is the ONLY
+      # code that decides the verdict, and it cannot come from the PR.
       - name: Runcap independent adjudication
-        uses: kirder24-code/ai-agent-manager@0000000000000000000000000000000000000000 # pin to a release SHA
+        uses: kirder24-code/ai-agent-manager@1eb87456333093c9fb8da6e9c21eef8d850891bc # Runcap v0.6.0
         with:
           mode: adjudicate

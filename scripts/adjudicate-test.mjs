@@ -304,6 +304,20 @@ check("reference workflow pins every action by a full 40-char commit SHA (no @v4
   usesRefs.length > 0 && usesRefs.every((u) => /@[0-9a-f]{40}$/.test(u)), JSON.stringify(usesRefs));
 check("reference workflow's judge is the released Runcap action, not workspace code",
   /uses:\s*kirder24-code\/ai-agent-manager@[0-9a-f]{40}/.test(wfText) && /mode:\s*adjudicate/.test(wfText), "released action judge");
+// SHA-resolution guidance must NOT teach the annotated-tag-object trap. Reading a
+// tag ref's `.object.sha` returns the TAG OBJECT sha for an annotated tag, not the
+// commit the Proof Gate must pin. The docs (workflow header comment AND README) must
+// not contain that pattern, and must teach `git rev-parse "vX.Y.Z^{}"` instead.
+const UNSAFE_SHA = /git\/refs\/tags\/[^\n]*--jq[^\n]*\.object\.sha/;
+const readmeRaw = readFileSync(path.join(REPO_ROOT, "README.md"), "utf8");
+check("consumer template does not teach the unsafe `git/refs/tags ... --jq .object.sha` resolution",
+  !UNSAFE_SHA.test(wfRaw), "workflow header gh-api pattern");
+check("README does not teach the unsafe `git/refs/tags ... --jq .object.sha` resolution",
+  !UNSAFE_SHA.test(readmeRaw), "README gh-api pattern");
+check("consumer template teaches `git rev-parse \"vX.Y.Z^{}\"` to peel an annotated tag to its commit",
+  /git rev-parse "vX\.Y\.Z\^\{\}"/.test(wfRaw), "workflow rev-parse guidance");
+check("README teaches `git rev-parse \"vX.Y.Z^{}\"` to peel an annotated tag to its commit",
+  /git rev-parse "vX\.Y\.Z\^\{\}"/.test(readmeRaw), "README rev-parse guidance");
 
 // --- 22. the judge is the adjudicator's OWN code, not the PR's bin -----------
 // A head PR that rewrites bin/runcap.mjs to always print PASS, or rewrites

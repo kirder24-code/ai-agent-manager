@@ -1,6 +1,6 @@
 {
   "name": "runcap",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Policy-bound budget enforcement and verification-integrity evidence for AI coding agents. Cap spend, enforce allowed scope, and fail the pull request when an agent tampers with its own success check. Local, MIT.",
   "license": "MIT",
   "type": "module",
@@ -47,11 +47,12 @@
     "acceptance": "node ./scripts/acceptance.mjs",
     "smoke": "node ./bin/runcap.mjs run --label smoke -- npm --prefix examples/broken-ts-app run build",
     "demo:broken": "node ./bin/runcap.mjs run --label broken-ts-demo -- npm --prefix examples/broken-ts-app run build",
-    "test": "node ./scripts/delta-test.mjs && node ./scripts/loop-test.mjs && node ./scripts/loop-e2e.mjs && node ./scripts/validate-demo.mjs && node ./scripts/outcome-test.mjs && node ./scripts/guard-test.mjs && node ./scripts/policy-test.mjs && node ./scripts/mission-test.mjs",
+    "test": "node ./scripts/delta-test.mjs && node ./scripts/loop-test.mjs && node ./scripts/loop-e2e.mjs && node ./scripts/validate-demo.mjs && node ./scripts/outcome-test.mjs && node ./scripts/guard-test.mjs && node ./scripts/policy-test.mjs && node ./scripts/mission-test.mjs && node ./scripts/adjudicate-test.mjs",
     "test:outcome": "node ./scripts/outcome-test.mjs",
     "test:guard": "node ./scripts/guard-test.mjs",
     "test:policy": "node ./scripts/policy-test.mjs",
     "test:mission": "node ./scripts/mission-test.mjs",
+    "test:tier3": "node ./scripts/adjudicate-test.mjs",
     "outcome": "node ./bin/runcap.mjs outcome",
     "test:delta": "node ./scripts/delta-test.mjs",
     "test:loop": "node ./scripts/loop-test.mjs",
@@ -63,7 +64,7 @@
     "screenshots": "node ./scripts/render-media-screenshots.mjs",
     "gateway": "node ./bin/runcap.mjs gateway",
     "fuel": "node ./bin/runcap.mjs fuel",
-    "check": "node --check ./bin/runcap.mjs && node --check ./src/mission-control.mjs"
+    "check": "node --check ./bin/runcap.mjs && node --check ./src/mission-control.mjs && node --check ./src/adjudicate.mjs"
   },
   "engines": {
     "node": ">=20"

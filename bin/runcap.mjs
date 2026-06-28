@@ -41,6 +41,7 @@ import {
   policyMeta,
   formatPolicyBlock
 } from "../src/policy.mjs";
+import { adjudicate, formatAdjudication, exitCodeFor } from "../src/adjudicate.mjs";
 import { readFileSync, appendFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -61,6 +62,9 @@ Usage:
                                  (enforce the repo policy; exit 1 if the mission is BLOCKED)
   runcap ci [--policy path] [--receipt path]
                                  (grade a receipt against the policy; writes PR summary, exit 1 on BLOCKED)
+  runcap ci --mode adjudicate [--policy path] [--base sha --head sha]
+                                 (Tier 3: recompute the verdict in CI from the PR's base commit -
+                                  never trusts the agent's receipt; exit 1 on BLOCKED)
   runcap plans
   runcap cap <usd>               (set the hard cap the gateway enforces)
   runcap cap show                (show the current cap)
@@ -311,32 +315,46 @@ try {
     if (result.receipt.policy?.verdict === "BLOCKED") process.exitCode = 1;
   } else if (command === "ci") {
     const ciArgs = args.slice(1);
+    const mode = takeOption(ciArgs, "--mode");
     const policyPath = takeOption(ciArgs, "--policy");
     const receiptPath = takeOption(ciArgs, "--receipt");
 
-    const loaded = loadPolicy(process.cwd(), policyPath);
-    if (!loaded) throw new Error("No policy found. Create .runcap/mission.yaml (or pass --policy <path>).");
-    const { ok, errors } = validatePolicy(loaded.policy);
-    if (!ok) {
-      for (const e of errors) console.error(`  policy error: ${e}`);
-      writeCiSummary(["## Runcap mission: policy INVALID", "", ...errors.map((e) => `- ${e}`)].join("\n"));
-      throw new Error("Mission policy is invalid.");
-    }
-
-    let receipt;
-    if (receiptPath) {
-      receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    if (mode === "adjudicate") {
+      // Tier 3: recompute the verdict from the BASE commit of the PR in a clean
+      // checkout. Trusts only the base/head SHAs from the pull_request event (or
+      // explicit --base/--head for local runs); never the agent's receipt.
+      const baseFlag = takeOption(ciArgs, "--base");
+      const headFlag = takeOption(ciArgs, "--head");
+      const verdict = await adjudicate({ cwd: process.cwd(), baseFlag, headFlag, policyPath });
+      const lines = formatAdjudication(verdict);
+      console.log(lines.join("\n"));
+      writeCiSummary(["## Runcap CI adjudication: " + verdict.verdict, "", "```", ...lines, "```"].join("\n"));
+      process.exitCode = exitCodeFor(verdict.verdict);
     } else {
-      const id = await latestOutcomeId();
-      if (!id) throw new Error("No outcome receipt found. Run `runcap mission run ...` first, or pass --receipt <path>.");
-      receipt = JSON.parse(readFileSync(`.runcap/outcomes/${id}/receipt.json`, "utf8"));
-    }
+      const loaded = loadPolicy(process.cwd(), policyPath);
+      if (!loaded) throw new Error("No policy found. Create .runcap/mission.yaml (or pass --policy <path>).");
+      const { ok, errors } = validatePolicy(loaded.policy);
+      if (!ok) {
+        for (const e of errors) console.error(`  policy error: ${e}`);
+        writeCiSummary(["## Runcap mission: policy INVALID", "", ...errors.map((e) => `- ${e}`)].join("\n"));
+        throw new Error("Mission policy is invalid.");
+      }
 
-    const verdict = evaluatePolicyVerdict(receipt, loaded.policy);
-    const block = formatPolicyBlock({ ...policyMeta(loaded), ...verdict });
-    console.log(block.join("\n"));
-    writeCiSummary(["## Runcap mission verdict: " + verdict.verdict, "", "```", ...block, "```"].join("\n"));
-    if (verdict.verdict === "BLOCKED") process.exitCode = 1;
+      let receipt;
+      if (receiptPath) {
+        receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+      } else {
+        const id = await latestOutcomeId();
+        if (!id) throw new Error("No outcome receipt found. Run `runcap mission run ...` first, or pass --receipt <path>.");
+        receipt = JSON.parse(readFileSync(`.runcap/outcomes/${id}/receipt.json`, "utf8"));
+      }
+
+      const verdict = evaluatePolicyVerdict(receipt, loaded.policy);
+      const block = formatPolicyBlock({ ...policyMeta(loaded), ...verdict });
+      console.log(block.join("\n"));
+      writeCiSummary(["## Runcap mission verdict: " + verdict.verdict, "", "```", ...block, "```"].join("\n"));
+      if (verdict.verdict === "BLOCKED") process.exitCode = 1;
+    }
   } else if (command === "login") {
     console.log(await loginCommand(args[1]));
   } else if (command === "logout") {

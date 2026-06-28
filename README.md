@@ -4,7 +4,7 @@
 
 ![Runcap terminal demo: estimate, cap, verify integrity, mission PASS - then a tampered run graded BLOCKED on the PR](docs/assets/demo.svg)
 
-**An AI coding agent can pass CI by editing the test that proves its own success. Runcap caps the spend before the run and issues evidence about whether that success check can be trusted. Free, MIT, 100% local - your code and tokens never touch a server.**
+**An AI coding agent can pass CI by editing the test that proves its own success. Runcap caps the spend before the run and issues evidence about whether that success check can be trusted. Free, MIT, local-first. Local runs keep Runcap's control plane on your machine; optional CI adjudication runs in your GitHub Actions environment.**
 
 > **An agent passing CI is not enough.**
 > Runcap verifies whether the evidence of success was altered during the mission.
@@ -35,6 +35,29 @@ In a 6-run test on the same task, the run that **delivered nothing** cost *more*
 > Most tools here are a rear-view mirror - they show you the bill *after* you paid it. Runcap estimates the bill *before* you start, caps it during the run, and issues evidence about whether the declared verification can be trusted. It is a circuit breaker with a receipt, not a dashboard.
 
 > If Runcap caps a run for you or compresses a call, please **star the repo** - it is the one signal that tells me to keep building it in the open.
+
+## Make a change earn merge eligibility
+
+> AI can propose a change.
+> Runcap makes it earn merge eligibility.
+
+`runcap ci --mode adjudicate` is a required PR check that does not trust the agent or its receipt. It recomputes the merge decision in a clean CI job from the pull request's **base commit**:
+
+```text
+AI-generated PR
+  → Runcap action pinned to an immutable release commit
+  → policy / verifier / dependencies read from the PR base commit
+  → clean CI replay
+  → PASS / BLOCKED / HUMAN_APPROVAL_REQUIRED
+```
+
+- **`PASS`** - the base verifier failed, the replay passed, and the change was allowed text-only edits inside scope.
+- **`BLOCKED`** - a scope violation, an unsafe diff type (delete / rename / binary / symlink / submodule / mode change), an unresolved base/head identity, or a failed replay.
+- **`HUMAN_APPROVAL_REQUIRED`** - the change touches the policy, a workflow, a verifier file, a dependency manifest/lockfile, or a protected path. Runcap does not auto-approve changes to its own rules or evidence; a human CODEOWNER must approve.
+
+The verdict is a **CI-attested replay under a documented hardened GitHub profile**. It is *not* "unspoofable," *not* "fully independent," and it is *not* independent budget enforcement - its integrity rests on the [required GitHub setup](docs/trust-model.md#required-github-setup) being in place. The agent's receipt never decides the verdict: the required gate does not read it.
+
+See the [trust model](docs/trust-model.md#ci-adjudication-v06) for exactly what v0.6 proves and what it does not, and [Install in a consumer repo](#install-in-a-consumer-repo) to wire it up.
 
 ## Why
 
@@ -164,7 +187,7 @@ Every request that passes through the gateway is compressed before it's forwarde
 
 1. **Per-field trim** - embedded JSON re-serialized compactly, long log/stack-trace dumps collapsed to head + tail, trailing whitespace squeezed.
 2. **Identical-block dedup** - when the exact same file dump or tool_result ships again in the same request, the repeat is replaced with a deterministic stub.
-3. **Delta-encoding of near-duplicates** - the layer no other proxy has. When the agent reads a file, edits one line, and re-reads it, the block is *similar but not identical*, so plain dedup saves nothing. Runcap sends a readable line-diff against the version the model already saw, and the model reconstructs the current file from it. On a real OpenAI call, an edited-file re-read dropped from **1186 to 737 prompt tokens - 37.9% saved, with the model still answering correctly about the changed line.** Proof and reproduction steps: [docs/delta-encoding-evidence.md](https://github.com/kirder24-code/ai-agent-manager/blob/main/docs/delta-encoding-evidence.md).
+3. **Delta-encoding of near-duplicates.** When the agent reads a file, edits one line, and re-reads it, the block is *similar but not identical*, so plain dedup saves nothing. Runcap sends a readable line-diff against the version the model already saw, and the model reconstructs the current file from it. On a real OpenAI call, an edited-file re-read dropped from **1186 to 737 prompt tokens - 37.9% saved, with the model still answering correctly about the changed line.** Proof and reproduction steps: [docs/delta-encoding-evidence.md](https://github.com/kirder24-code/ai-agent-manager/blob/main/docs/delta-encoding-evidence.md).
 
 It's pure Node with **zero native or ML dependencies** (the only runtime dependency is `js-yaml`, pure JS), so it installs everywhere without the build pain heavier compressors have.
 
@@ -301,30 +324,24 @@ runcap mission run -- claude "fix the failing checkout test, then stop"
 - spend exceeded `mission_hard_limit_usd`, or the gateway's budget guard tripped mid-run;
 - `max_llm_calls` or `max_runtime_minutes` was exceeded.
 
-### The GitHub Action (the red/green PR check)
+### The local grade vs. the CI adjudication
 
-```yaml
-# .github/workflows/runcap.yml
-jobs:
-  runcap-mission:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      # 1. Run the agent under the policy (produces a graded receipt + exits 1 on BLOCKED)
-      - run: npx runcap mission run -- <your agent command>
-      # 2. Grade the latest receipt against the committed policy and annotate the PR
-      - uses: kirder24-code/ai-agent-manager@v1
-        with:
-          policy: .runcap/mission.yaml
-```
+There are two ways the policy verdict reaches a PR, and they trust different things:
 
-`runcap ci` (what the Action runs) re-grades a receipt **against the committed policy text**, not whatever was stamped at run time, and appends the verdict to `$GITHUB_STEP_SUMMARY` as the PR annotation. Already have a receipt from an earlier job? Grade it directly:
+- **`runcap mission run`** (local / same-job) grades the run it just executed and re-checks it against the committed policy text. Useful, but the receipt it produces is *agent-side* evidence.
+- **`runcap ci --mode adjudicate`** (the required PR check) trusts none of that. It recomputes the verdict in a clean CI job from the PR's base commit and **never reads the agent receipt**. This is the gate that decides merge eligibility.
 
-```bash
-runcap ci --policy .runcap/mission.yaml --receipt .runcap/outcomes/<id>/receipt.json
-```
+### Install in a consumer repo
+
+Make the adjudication a required red/green PR check in your own repo:
+
+1. Add `.runcap/mission.yaml` (the policy - see the example above).
+2. Copy `examples/runcap-adjudicate.yml` into `.github/workflows/`.
+3. Replace the all-zero `RUNCAP_ACTION_SHA` placeholder with the full immutable commit SHA of the released version (resolve it with `gh api repos/kirder24-code/ai-agent-manager/git/refs/tags/vX.Y.Z --jq '.object.sha'`).
+4. Configure the hardened GitHub branch profile (protected branch, required check, up-to-date-before-merge, dismiss stale approvals, CODEOWNERS for workflow/policy/verifier/dependency/protected paths, no bypass for ordinary authors) - the full list is in the [trust model](docs/trust-model.md#required-github-setup).
+5. Make `Runcap adjudicate` a required status check.
+
+> The template ships with an all-zero placeholder SHA and is **intentionally not runnable until you insert the release SHA**. This is deliberate: the judge must be an immutable release commit that lives outside the candidate PR, so a malicious PR cannot rewrite its own judge.
 
 A reviewer sees one of two things:
 
@@ -361,20 +378,16 @@ Runcap is built not to fake certainty. Every important output carries a truth la
 
 If it cannot prove something, it says so.
 
-## Pricing (the product, not the tokens)
+## Availability
 
-| Tier | Price | What you get |
-|---|---|---|
-| **OSS** (MIT, local) | $0 forever | All local runs, cost estimation, hard cap, run wrapping, stuck detection, rescue prompts, local dashboard. Never crippleware. |
-| **Founding Pro** (limited) | **$49 once** | Lifetime Pro at the founder price - pay once, keep Pro forever, before it moves to $19/mo. |
-| **Pro** | $19/mo | Cloud sync across machines, hosted dashboard, estimate-vs-actual trends, shareable reports, alerts on cap breach |
-| **Team** | $49/seat/mo | Shared budget pools, org-wide ceilings, per-project rollups, role-based caps |
+Runcap v0.6 is open-source and free under MIT.
 
-The local core is free forever. Only persistence, collaboration, and aggregation are paid - the things that only matter once data leaves your laptop.
+The local CLI and CI adjudication mode are available now.
+Hosted sync, team budget pools, organization reporting, and paid plans are future ideas only. They are not available for purchase today.
 
 ## Current stage
 
-A working local tool, not a hosted SaaS. Ready for: wrapping real Codex / Claude / Cursor sessions, catching stuck agents, and proving rescue prompts save time. Not yet: a hosted cloud platform or a universal observability standard. It is not trying to replace Langfuse or LiteLLM - it does the thing they don't.
+A working local tool plus an optional CI adjudication mode, not a hosted SaaS. Ready for: wrapping real Codex / Claude / Cursor sessions, catching stuck agents, proving rescue prompts save time, and gating AI-generated pull requests in GitHub Actions. Not yet: a hosted cloud platform or a universal observability standard. It is not trying to replace Langfuse or LiteLLM; it focuses on a different layer - pre-run cost caps and merge-eligibility evidence.
 
 ## Documentation
 
@@ -391,4 +404,4 @@ Runcap is built and maintained by Kirill D., a solo AI and automation consultant
 
 ---
 
-The thesis: **AI agents need managers.**
+The thesis: **AI can propose a change. It should not certify its own success.**

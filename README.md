@@ -371,6 +371,23 @@ See a public consumer-repository demo with three live pull requests: an in-scope
 
 Each verdict was produced by the pinned Runcap action running in GitHub Actions on a real pull request.
 
+### Watch the live proof
+
+<!-- Embed the recorded walkthrough here once it is published. Until then, this links to the live evidence. -->
+<!-- Example embed (replace with the published asset URL):
+[![Runcap Proof Gate live demo](docs/media/proof-gate-demo-poster.png)](https://github.com/kirder24-code/runcap-proof-gate-demo)
+-->
+
+A 45-75 second walkthrough recorded entirely from the live demo repo and its real GitHub Actions runs - no synthetic UI, no fabricated output. It shows one problem and three verdicts:
+
+> An AI-generated PR can make CI green by changing the test that proves it succeeded.
+
+- a scoped source fix → `PASS`
+- a correct fix plus an unrelated file → `BLOCKED`
+- a verifier edit → `HUMAN_APPROVAL_REQUIRED`
+
+This is a CI-attested replay under a documented hardened GitHub profile - not an "unspoofable" or "fully independent" guarantee. The recording plan, captions, and shot list live in [`docs/media/`](docs/media/).
+
 ## Pricing table
 
 Costs are calculated from a sourced multi-provider table - Anthropic (Opus / Sonnet / Haiku), OpenAI (GPT-5 family + legacy GPT-4), and DeepSeek (V4 Flash / V4 Pro) - with cache-read and batch discounts handled, labeled with source and verification date. When a model is unknown, Runcap says `unknown_price` rather than guessing.

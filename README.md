@@ -70,7 +70,7 @@ Observability tools (Langfuse, Helicone, LangSmith, AgentOps) measure the past, 
 estimate before build  →  cap during run  →  compress every call  →  rescue when stuck  →  verify the outcome
 ```
 
-It also quietly trims waste on the way through: on a real OpenAI call, one edited-file re-read dropped from **1,186 to 737 prompt tokens (37.9% saved)** with the model still answering correctly about the changed line - lossless, and no other proxy does it ([details below](#token-compression-built-in-no-extra-deps)).
+It also quietly trims waste on the way through: on a real OpenAI call, one edited-file re-read dropped from **1,186 to 737 prompt tokens (37.9% saved)** with the model still answering correctly about the changed line - see the details below.
 
 ## The honest claim
 

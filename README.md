@@ -373,12 +373,9 @@ Each verdict was produced by the pinned Runcap action running in GitHub Actions 
 
 ### Watch the live proof
 
-<!-- Embed the recorded walkthrough here once it is published. Until then, this links to the live evidence. -->
-<!-- Example embed (replace with the published asset URL):
-[![Runcap Proof Gate live demo](docs/media/proof-gate-demo-poster.png)](https://github.com/kirder24-code/runcap-proof-gate-demo)
--->
+[![Watch the Runcap Proof Gate live demo](docs/assets/runcap-proof-gate-demo-poster.png)](docs/assets/runcap-proof-gate-demo-v0.6.0.mp4)
 
-A 45-75 second walkthrough recorded entirely from the live demo repo and its real GitHub Actions runs - no synthetic UI, no fabricated output. It shows one problem and three verdicts:
+Watch a 70-second screen recording made from the public consumer demo and its real GitHub Actions runs. It shows one problem and three verdicts:
 
 > An AI-generated PR can make CI green by changing the test that proves it succeeded.
 
@@ -386,7 +383,7 @@ A 45-75 second walkthrough recorded entirely from the live demo repo and its rea
 - a correct fix plus an unrelated file → `BLOCKED`
 - a verifier edit → `HUMAN_APPROVAL_REQUIRED`
 
-This is a CI-attested replay under a documented hardened GitHub profile - not an "unspoofable" or "fully independent" guarantee. The recording plan, captions, and shot list live in [`docs/media/`](docs/media/).
+This is a CI-attested replay under a documented hardened GitHub profile - not an "unspoofable" or "fully independent" guarantee. The recording is an edited screen recording assembled from real public GitHub browser captures (no synthetic UI). See the live evidence on the [demo repo](https://github.com/kirder24-code/runcap-proof-gate-demo#live-evidence) and pull requests [#1](https://github.com/kirder24-code/runcap-proof-gate-demo/pull/1), [#2](https://github.com/kirder24-code/runcap-proof-gate-demo/pull/2), [#3](https://github.com/kirder24-code/runcap-proof-gate-demo/pull/3). The recording plan, captions, shot list, and evidence manifest live in [`docs/media/`](docs/media/).
 
 ## Pricing table
 

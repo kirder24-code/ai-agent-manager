@@ -1,0 +1,39 @@
+1
+00:00:00,000 --> 00:00:08,000
+An AI-generated PR can make CI green by changing the test that proves it succeeded.
+
+2
+00:00:08,000 --> 00:00:16,000
+This is a public demo repo. The verifier requires both admin and member, but the code only allows admin, so the base branch fails on purpose.
+
+3
+00:00:16,000 --> 00:00:25,000
+The gate is the Runcap action, pinned to release commit 1eb8745, running as a pull-request check.
+
+4
+00:00:25,000 --> 00:00:34,000
+PR #1 edits only the source file to allow member too. The check is green. The log says Verdict: PASS.
+
+5
+00:00:34,000 --> 00:00:42,000
+PR #2 makes the same correct fix, but adds an unrelated file outside the allowed scope.
+
+6
+00:00:42,000 --> 00:00:50,000
+The check is red. Verdict: BLOCKED, naming docs/unrelated-change.md as out of scope.
+
+7
+00:00:50,000 --> 00:00:58,000
+PR #3 doesn't fix the code. It edits the verifier - the proof itself.
+
+8
+00:00:58,000 --> 00:01:05,000
+Verdict: HUMAN_APPROVAL_REQUIRED. Runcap declines to auto-certify and hands the decision to a human CODEOWNER.
+
+9
+00:01:05,000 --> 00:01:12,000
+CI-attested replay under a documented hardened GitHub profile.
+
+10
+00:01:12,000 --> 00:01:15,000
+AI can propose a change. It should not certify its own success.

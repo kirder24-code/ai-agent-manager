@@ -1,5 +1,7 @@
 # Launch copy — Runcap
 
+> Historical planning document. It may describe ideas, pricing, or product direction that are not part of Runcap's current public offer. See `docs/current-product-status.md` for the current product boundary.
+
 Ready-to-paste posts for launch day. Post AFTER `npm publish` succeeds and `npm install -g runcap` works.
 
 Links used:

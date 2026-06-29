@@ -1,5 +1,7 @@
 # Product Plan: AI Efficiency Manager
 
+> Historical planning document. It may describe ideas, pricing, or product direction that are not part of Runcap's current public offer. See `docs/current-product-status.md` for the current product boundary.
+
 ## Position
 
 AI users do not only need more agents. They need a manager that turns AI spend into accountable work.

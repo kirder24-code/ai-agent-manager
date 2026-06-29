@@ -1,5 +1,7 @@
 # AI Agent Manager — Business Plan (idea → money)
 
+> Historical planning document. It may describe ideas, pricing, or product direction that are not part of Runcap's current public offer. See `docs/current-product-status.md` for the current product boundary.
+
 _Last updated: 2026-06-01_
 
 This is the money path. It runs alongside `ROADMAP.md` (what to build) and answers: how do we sell it, get it in front of people, prove value, keep it simple, what it costs to build, what it costs to sell, and how every build step gets analyzed and improved before the next one.

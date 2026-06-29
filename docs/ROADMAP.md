@@ -1,5 +1,7 @@
 # AI Agent Manager — Roadmap
 
+> Historical planning document. It may describe ideas, pricing, or product direction that are not part of Runcap's current public offer. See `docs/current-product-status.md` for the current product boundary.
+
 _Last updated: 2026-06-01_
 
 This is the build-and-launch plan for AI Agent Manager. It is split into shippable parts so each phase ends with something usable, not half-finished infrastructure.

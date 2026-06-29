@@ -373,7 +373,9 @@ Each verdict was produced by the pinned Runcap action running in GitHub Actions 
 
 ### Watch the live proof
 
-[![Watch the Runcap Proof Gate live demo](docs/assets/runcap-proof-gate-demo-poster.png)](docs/assets/runcap-proof-gate-demo-v0.6.0.mp4)
+[![Watch the Runcap Proof Gate live demo](docs/assets/runcap-proof-gate-demo-poster.png)](https://raw.githubusercontent.com/kirder24-code/ai-agent-manager/main/docs/assets/runcap-proof-gate-demo-v0.6.0.mp4)
+
+[Open the MP4 directly](https://raw.githubusercontent.com/kirder24-code/ai-agent-manager/main/docs/assets/runcap-proof-gate-demo-v0.6.0.mp4)
 
 Watch a 70-second screen recording made from the public consumer demo and its real GitHub Actions runs. It shows one problem and three verdicts:
 

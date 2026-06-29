@@ -5,7 +5,7 @@ This guide proves the product locally without any paid API call.
 ## 1. Setup
 
 ```bash
-cd agent-manager-lab
+cd ai-agent-manager
 npm run setup
 npm run doctor
 ```
@@ -37,7 +37,7 @@ Open:
 http://127.0.0.1:8791
 ```
 
-The dashboard is local-only. It reads `.aim-control/missions` and `.aim-control/gateway-events.jsonl`.
+The dashboard is local-first. It reads `.runcap/missions` and `.runcap/gateway-events.jsonl`.
 
 On macOS, double-click:
 

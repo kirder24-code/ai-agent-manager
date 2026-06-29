@@ -4,35 +4,36 @@
 
 ![Runcap terminal demo: estimate, cap, verify integrity, mission PASS - then a tampered run graded BLOCKED on the PR](docs/assets/demo.svg)
 
-**An AI coding agent can pass CI by editing the test that proves its own success. Runcap caps the spend before the run and issues evidence about whether that success check can be trusted. Free, MIT, local-first. Local runs keep Runcap's control plane on your machine; optional CI adjudication runs in your GitHub Actions environment.**
+**Control AI coding spend. Require proof before merge.**
+
+Runcap is a local-first control layer for AI coding agents. It can cap routed AI
+spend and use a pinned GitHub Action to replay base-pinned verification before an
+AI-generated PR earns merge eligibility.
+
+Current public position:
+
+```text
+Runcap controls AI coding missions.
+
+It caps routed AI spend,
+constrains what an agent may change,
+and requires proof before an AI-generated pull request earns merge eligibility.
+```
+
+What Runcap sees:
+
+- Spend controls apply only to requests routed through Runcap.
+- The CI Proof Gate independently verifies code changes; it does not claim to independently meter all model usage.
+- Hosted sync, team pools, organization reporting, and paid plans are not products available for purchase today.
+
+See [current product status](docs/current-product-status.md) for the exact public boundary.
 
 > **An agent passing CI is not enough.**
 > Runcap verifies whether the evidence of success was altered during the mission.
 
-| Status | Meaning |
-|---|---|
-| `VERIFIED_STRONG` | Result passed an unchanged verifier and a clean-worktree replay. |
-| `VERIFIED_WEAK` | Result passed, but some integrity evidence is missing. |
-| `UNVERIFIED` | Verification did not pass. |
-| `VERIFIER_COMPROMISED` | The agent changed protected verification evidence. |
-
 ```text
 Estimate the run  →  Cap the spend  →  Verify the outcome
 ```
-
-Most cost and observability tools measure **tokens** used. But you don't buy tokens - you buy a result that passes a check. So Runcap measures the number that actually decides whether the spend was worth it:
-
-> **Verified Outcome Cost = total run cost / tasks that passed verification.** An agent that talks but never fixes the bug can cost *more* than one that does - and a token dashboard calls it "cheaper."
-
-| | Without Runcap | With Runcap |
-|---|---|---|
-| You find out the cost | when the invoice arrives | **before you press go, capped at your ceiling** |
-| When the agent gets stuck | it keeps spending | **run stops, you get the exact rescue prompt** |
-| What you paid for | tokens (delivered or not) | **dollars per *verified* result** |
-
-In a 6-run test on the same task, the run that **delivered nothing** cost *more* than the one that delivered, and the cheapest verified result was ~43x cheaper than the most expensive - same passing test. ([full table below](#real-results-6-runs-same-task-reproducible-offline))
-
-> Most tools here are a rear-view mirror - they show you the bill *after* you paid it. Runcap estimates the bill *before* you start, caps it during the run, and issues evidence about whether the declared verification can be trusted. It is a circuit breaker with a receipt, not a dashboard.
 
 > If Runcap caps a run for you or compresses a call, please **star the repo** - it is the one signal that tells me to keep building it in the open.
 
@@ -418,7 +419,7 @@ A working local tool plus an optional CI adjudication mode, not a hosted SaaS. R
 
 ## Documentation
 
-- [Product status](PRODUCT.md)
+- [Current product status](docs/current-product-status.md)
 - [Quickstart](docs/quickstart.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Business plan](docs/BUSINESS-PLAN.md)

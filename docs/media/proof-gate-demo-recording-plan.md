@@ -15,8 +15,11 @@ Suggested output file: `runcap-proof-gate-demo-v0.6.0.mp4`
 - Runcap v0.6.0 release commit: `1eb87456333093c9fb8da6e9c21eef8d850891bc`
 
 The exact `Verdict:` and reason lines for each PR are quoted in the demo repo
-README's "Live evidence" section. Read them off the live Actions run logs while
-recording - do not retype them from memory.
+README's "Live evidence" section. Logged-out GitHub viewers cannot access raw
+Actions step logs. For each scenario, the recording shows the real public
+Actions run page for its Success / Failure status and the demo repo's public
+"Live evidence" section for the exact `Verdict:` and reason lines transcribed
+from that same run.
 
 ## Timeline
 
@@ -39,24 +42,25 @@ pinned to release commit `1eb8745`, running as a pull-request check.
 
 **[0:16-0:34] Scenario 1 - PASS (PR #1)**
 
-Open PR #1. Show the green check, then open its Actions run log and show the
-real line `Verdict:     PASS`. Narrate: the fix edits only `src/access.mjs`;
-the verifier failed at the base commit and passed after the in-scope change,
-replayed in a clean checkout.
+Open PR #1. Show the green Actions status, then show the demo repo's public
+"Live evidence" section with `Verdict:     PASS`. Narrate: the fix edits only
+`src/access.mjs`; the verifier failed at the base commit and passed after the
+in-scope change, replayed in a clean checkout.
 
 **[0:34-0:50] Scenario 2 - BLOCKED (PR #2)**
 
-Open PR #2. Show the red check, then the Actions run log line `Verdict:
-BLOCKED` and the reason naming `docs/unrelated-change.md` as outside the
-allowed scope. Narrate: same correct fix, but an unrelated out-of-scope file
-rides along, so the gate blocks it.
+Open PR #2. Show the red Actions status, then show the demo repo's public
+"Live evidence" section with `Verdict:     BLOCKED` and the reason naming
+`docs/unrelated-change.md` as outside the allowed scope. Narrate: same correct
+fix, but an unrelated out-of-scope file rides along, so the gate blocks it.
 
 **[0:50-1:05] Scenario 3 - HUMAN_APPROVAL_REQUIRED (PR #3)**
 
-Open PR #3. Show the run log line `Verdict: HUMAN_APPROVAL_REQUIRED` and the
-reason naming `scripts/verify.mjs` as a verifier edit. Narrate: this PR edits
-the verifier - the proof itself - so Runcap declines to auto-certify and hands
-the decision to a human CODEOWNER.
+Open PR #3. Show the successful / neutral Actions status, then show the demo
+repo's public "Live evidence" section with `Verdict: HUMAN_APPROVAL_REQUIRED`
+and the reason naming `scripts/verify.mjs` as a verifier/evidence change.
+Narrate: this PR edits the verifier - the proof itself - so Runcap declines to
+auto-certify and hands the decision to a human CODEOWNER.
 
 **[1:05-1:12] The honesty line (on-screen, required)**
 
